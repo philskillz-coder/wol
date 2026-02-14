@@ -1,0 +1,26 @@
+// TypeScript Enums for type safety (SQLite doesn't support Prisma enums)
+
+export enum DeviceMode {
+  ACTIVE = 'ACTIVE',
+  PASSIVE = 'PASSIVE',
+}
+
+export enum DeviceStatus {
+  ONLINE = 'ONLINE',
+  OFFLINE = 'OFFLINE',
+  STANDBY = 'STANDBY',
+  UNKNOWN = 'UNKNOWN',
+}
+
+export enum LogType {
+  DEVICE_CREATED = 'DEVICE_CREATED',
+  DEVICE_UPDATED = 'DEVICE_UPDATED',
+  DEVICE_DELETED = 'DEVICE_DELETED',
+  WAKE_SENT = 'WAKE_SENT',
+  SHUTDOWN_SENT = 'SHUTDOWN_SENT',
+  STATUS_CHANGED = 'STATUS_CHANGED',
+  CLIENT_CONNECTED = 'CLIENT_CONNECTED',
+  CLIENT_DISCONNECTED = 'CLIENT_DISCONNECTED',
+  ERROR = 'ERROR',
+  INFO = 'INFO',
+}

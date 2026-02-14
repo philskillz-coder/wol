@@ -1,0 +1,7 @@
+{
+  "deviceId": "your-device-id-here",
+  "secret": "your-secret-here",
+  "serverUrl": "http://localhost:3000",
+  "wsUrl": "ws://localhost:3000/ws",
+  "allowShutdown": false
+}

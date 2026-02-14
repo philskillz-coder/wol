@@ -1,0 +1,6 @@
+{
+  "deviceId": "17d01409-5768-499a-9b05-56be538f9535",
+  "secret": "04ba59d891edf033b8ca3c744f903b2b23c4fec1c784a441ecff5a67107d1d7b",
+  "serverUrl": "http://localhost:3000",
+  "wsUrl": "ws://localhost:3000"
+}
