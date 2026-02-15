@@ -7,41 +7,43 @@ interface Config {
   deviceId: string;
   secret: string;
   serverUrl: string;
-  wsUrl: string;
   allowShutdown: boolean;
 }
 
 /**
- * Lädt die Konfiguration aus der config.json im Root-Verzeichnis
+ * Lädt die Konfiguration aus Umgebungsvariablen (z. B. aus .env).
+ * --config=./.env oder --env=./.env setzt den Pfad zur .env-Datei (dotenv wird vor main geladen).
  */
-function loadConfig(): Config {
-  // 1. Prüfe, ob ein Pfad als Argument übergeben wurde (z.B. --config=./my-config.json)
-  const configArg = process.argv.find(arg => arg.startsWith('--config='));
+function getEnvPath(): string {
+  const configArg = process.argv.find(arg => arg.startsWith('--config=') || arg.startsWith('--env='));
   const customPath = configArg ? configArg.split('=')[1] : null;
-
-  // 2. Bestimme den finalen Pfad (absolut)
-  const configPath = customPath 
-    ? path.resolve(process.cwd(), customPath) 
-    : path.join(__dirname, '../config.json');
-
-  console.log(`🔍 Lade Konfiguration von: ${configPath}`);
-
-  if (!fs.existsSync(configPath)) {
-    console.error(`❌ Konfiguration unter ${configPath} nicht gefunden!`);
-    process.exit(1);
+  if (customPath) {
+    return path.resolve(process.cwd(), customPath);
   }
-
-  try {
-    const configContent = fs.readFileSync(configPath, 'utf-8');
-    const config = JSON.parse(configContent) as Config;
-    
-    // Validierung bleibt gleich...
-    return config;
-  } catch (error: any) {
-    console.error('❌ Fehler beim Laden der Datei:', error?.message || error);
-    process.exit(1);
-  }
+  return path.resolve(process.cwd(), '.env');
 }
+
+function loadConfig(): Config {
+  // Dotenv wurde bereits in der Import-Phase geladen (siehe loadConfigWithPath in main)
+  const deviceId = process.env.DEVICE_ID;
+  const secret = process.env.SECRET;
+  const serverUrl = process.env.SERVER_URL;
+
+  if (!deviceId || !secret || !serverUrl) {
+    console.error('❌ Fehlende Konfiguration. Setze DEVICE_ID, SECRET und SERVER_URL (z. B. in .env).');
+    process.exit(1);
+  }
+
+  const allowShutdown = process.env.ALLOW_SHUTDOWN === 'true' || process.env.ALLOW_SHUTDOWN === '1';
+
+  return {
+    deviceId,
+    secret,
+    serverUrl: serverUrl.replace(/\/$/, ''),
+    allowShutdown,
+  };
+}
+
 /**
  * Führt den System-Shutdown je nach Betriebssystem aus
  */
@@ -51,7 +53,7 @@ function shutdown(): Promise<void> {
 
   return new Promise((resolve, reject) => {
     let command: string;
-    
+
     switch (platform) {
       case 'win32':
         command = 'shutdown /s /t 0';
@@ -73,9 +75,18 @@ function shutdown(): Promise<void> {
 }
 
 async function main() {
+  const envPath = getEnvPath();
+  if (!fs.existsSync(envPath)) {
+    console.error(`❌ Konfigurationsdatei nicht gefunden: ${envPath}`);
+    console.error('   Kopiere client/.env.example nach client/.env und trage DEVICE_ID, SECRET und SERVER_URL ein.');
+    process.exit(1);
+  }
+  const dotenv = await import('dotenv');
+  dotenv.config({ path: envPath });
+  console.log(`🔍 Lade Konfiguration von: ${envPath}`);
+
   const config = loadConfig();
-  
-  // Socket.IO verbindet zur Namespace /ws; Engine.IO-Handshake läuft über /socket.io (Server-Standard)
+
   console.log('🚀 Wake-on-LAN Client wird gestartet...');
   console.log(`🆔 Device ID: ${config.deviceId}`);
   console.log(`📡 Server:    ${config.serverUrl}`);
@@ -90,33 +101,23 @@ async function main() {
     forceNew: true
   });
 
-  // --- DETAILLIERTES ERROR LOGGING ---
-
-  // Standard Verbindungsfehler
   socket.on('connect_error', (err: any) => {
     console.error('❌ Verbindungsfehler Details:');
     console.error(`   - Nachricht: ${err.message}`);
-    // Zeigt zusätzliche Details vom Server (z.B. Proxy-Errors oder Header-Probleme)
     if (err.description) console.error(`   - Beschreibung: ${err.description}`);
     if (err.context) console.error(`   - Kontext: ${JSON.stringify(err.context)}`);
-    
-    // Prüfe auf SSL/Zertifikatsprobleme
     if (err.message?.includes('CERT_')) {
       console.error('   - Hinweis: Es gibt ein Problem mit dem SSL-Zertifikat!');
     }
   });
 
-  // Fehler während der bestehenden Verbindung
   socket.on('error', (err: any) => {
     console.error('❌ Socket-Fehler:', err);
   });
 
-  // Fehler beim Transport (Engine.io Ebene)
-  socket.io.on("error", (err) => {
+  socket.io.on('error', (err) => {
     console.error('❌ Transport-Layer Fehler:', err);
   });
-
-  // --- RESTLICHE LOGIK ---
 
   socket.on('connect', () => {
     console.log('✅ Mit Server verbunden. Authentifizierung läuft...');
@@ -142,13 +143,12 @@ async function main() {
     console.log('⚠️ Shutdown-Befehl empfangen!');
 
     if (!config.allowShutdown) {
-      console.log('❌ Shutdown abgebrochen: Deaktiviert in config.json');
+      console.log('❌ Shutdown abgebrochen: Deaktiviert in .env (ALLOW_SHUTDOWN)');
       socket.emit('shutdown-ack', { deviceId: config.deviceId, status: 'disabled' });
       return;
     }
 
     try {
-      // Bestätigung an Server senden, bevor das System ausgeht
       socket.emit('shutdown-ack', { deviceId: config.deviceId, status: 'executing' });
       await shutdown();
     } catch (error: any) {
@@ -164,7 +164,6 @@ async function main() {
     console.log(`⚠️ Verbindung getrennt: ${reason}`);
   });
 
-  // Graceful Shutdown des Client-Prozesses (z.B. bei STRG+C)
   const cleanup = () => {
     console.log('\n🛑 Client wird beendet...');
     socket.disconnect();

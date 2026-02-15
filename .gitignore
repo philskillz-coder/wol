@@ -44,3 +44,4 @@ server/backend/prisma/migrations/
 
 # Client config (contains secrets)
 client/config.json
+client/.env

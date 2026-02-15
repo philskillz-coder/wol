@@ -25,6 +25,7 @@ function App() {
   const [showDeviceForm, setShowDeviceForm] = useState(false)
   const [editingDevice, setEditingDevice] = useState<Device | null>(null)
   const [apiTokens, setApiTokens] = useState<any[]>([])
+  const [secretModal, setSecretModal] = useState<{ deviceName: string; secret: string } | null>(null)
 
   const socketRef = useRef<Socket | null>(null)
 
@@ -192,22 +193,45 @@ function App() {
       const response = await axios.get(`${API_URL}/devices/${deviceId}/config`, {
         headers: { Authorization: `Bearer ${token}` },
       })
-      
-      const config = response.data
-      const configJson = JSON.stringify(config, null, 2)
-      
-      // Create download
-      const blob = new Blob([configJson], { type: 'application/json' })
+      const { deviceId: id, secret, serverUrl } = response.data
+      const envLines = [
+        '# Wake-on-LAN Active Client – copy to client/.env',
+        `DEVICE_ID=${id}`,
+        `SECRET=${secret}`,
+        `SERVER_URL=${serverUrl}`,
+        'ALLOW_SHUTDOWN=false',
+      ]
+      const envContent = envLines.join('\n')
+      const blob = new Blob([envContent], { type: 'text/plain' })
       const url = URL.createObjectURL(blob)
       const a = document.createElement('a')
       a.href = url
-      a.download = `device-${deviceId}-config.json`
+      a.download = `device-${deviceId}.env`
       document.body.appendChild(a)
       a.click()
       document.body.removeChild(a)
       URL.revokeObjectURL(url)
     } catch (error: any) {
       alert(`Failed to download config: ${error.response?.data?.message || error.message}`)
+    }
+  }
+
+  const handleRegenerateSecret = async (deviceId: string) => {
+    const token = localStorage.getItem('token')
+    try {
+      const response = await axios.post(
+        `${API_URL}/devices/${deviceId}/regenerate-secret`,
+        {},
+        { headers: { Authorization: `Bearer ${token}` } }
+      )
+      const device = devices.find((d) => d.id === deviceId)
+      setSecretModal({
+        deviceName: device?.name ?? 'Device',
+        secret: response.data.secret,
+      })
+      await loadDevices(token!)
+    } catch (error: any) {
+      alert(`Failed to regenerate secret: ${error.response?.data?.message || error.message}`)
     }
   }
 
@@ -326,12 +350,13 @@ function App() {
                     device={device}
                     onWake={handleWake}
                     onShutdown={handleShutdown}
-                    onEdit={(device) => {
-                      setEditingDevice(device)
+                    onEdit={(d) => {
+                      setEditingDevice(d)
                       setShowDeviceForm(true)
                     }}
                     onDelete={handleDeleteDevice}
                     onDownloadConfig={handleDownloadConfig}
+                    onRegenerateSecret={handleRegenerateSecret}
                   />
                 ))}
               </div>
@@ -391,6 +416,41 @@ function App() {
             setEditingDevice(null)
           }}
         />
+      )}
+
+      {secretModal && (
+        <div className="fixed inset-0 bg-black/50 flex items-center justify-center z-50 p-4">
+          <div className="bg-white rounded-lg shadow-xl max-w-md w-full p-6">
+            <h3 className="text-lg font-semibold mb-2">New secret: {secretModal.deviceName}</h3>
+            <p className="text-sm text-gray-600 mb-3">
+              Update your client config with this secret. It won&apos;t be shown again.
+            </p>
+            <div className="flex gap-2 mb-4">
+              <input
+                type="text"
+                readOnly
+                value={secretModal.secret}
+                className="flex-1 px-3 py-2 border border-gray-300 rounded text-sm font-mono bg-gray-50"
+              />
+              <button
+                type="button"
+                onClick={() => {
+                  navigator.clipboard.writeText(secretModal.secret)
+                }}
+                className="px-4 py-2 bg-gray-800 text-white rounded hover:bg-gray-900 text-sm"
+              >
+                Copy
+              </button>
+            </div>
+            <button
+              type="button"
+              onClick={() => setSecretModal(null)}
+              className="w-full py-2 bg-blue-600 text-white rounded hover:bg-blue-700"
+            >
+              Close
+            </button>
+          </div>
+        </div>
       )}
     </div>
   )

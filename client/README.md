@@ -1,20 +1,20 @@
 # Wake-on-LAN Client
 
-Ein leichtgewichtiger TypeScript-Client für aktive Wake-on-LAN-Geräte.
+Ein leichtgewichtiger TypeScript-Client für aktive Wake-on-LAN-Geräte. Die Konfiguration erfolgt über eine **.env-Datei** (nicht im Repository committen).
 
 ## Setup
 
-1. Installiere Dependencies:
+1. Dependencies installieren:
 ```bash
 npm install
 ```
 
-2. Erstelle `config.json` basierend auf `config.json.example`:
+2. `.env` anlegen (z. B. aus dem Dashboard „Download .env“ oder aus dem Beispiel):
 ```bash
-cp config.json.example config.json
+cp .env.example .env
 ```
 
-3. Fülle die `config.json` mit den Werten aus dem Backend-Dashboard aus.
+3. `.env` mit Werten füllen: `DEVICE_ID`, `SECRET`, `SERVER_URL` (vom Backend-Dashboard). Optional: `ALLOW_SHUTDOWN=true` für Remote-Shutdown.
 
 ## Verwendung
 
@@ -23,21 +23,29 @@ cp config.json.example config.json
 npm run dev
 ```
 
+Andere .env-Datei:
+```bash
+npm run dev -- --config=./.env.staging
+```
+
 ### Production
 ```bash
 npm run build
 npm start
 ```
 
-## Config
+## Konfiguration (.env)
 
-Die `config.json` enthält:
-- `deviceId`: Die ID des Geräts (vom Backend generiert)
-- `secret`: Das Secret für die Authentifizierung (vom Backend generiert)
-- `serverUrl`: URL des Backend-Servers
-- `wsUrl`: WebSocket-URL des Backend-Servers
-- `allowShutdown`: `true`/`false` - Erlaubt Remote-Shutdown (nur wenn explizit `true`)
+| Variable         | Beschreibung |
+|------------------|--------------|
+| `DEVICE_ID`      | Geräte-ID (vom Dashboard) |
+| `SECRET`         | Geheimnis für die WebSocket-Authentifizierung |
+| `SERVER_URL`     | Basis-URL des Backends (z. B. `http://localhost:3000`) |
+| `ALLOW_SHUTDOWN` | `true` oder `false` – erlaubt Remote-Shutdown nur wenn `true` |
+
+Die WebSocket-URL wird aus `SERVER_URL` abgeleitet (Namespace `/ws`).
 
 ## Sicherheit
 
-**WICHTIG:** Setze `allowShutdown` nur auf `true`, wenn du wirklich Remote-Shutdown erlauben möchtest. Der Client führt nur dann einen Shutdown aus, wenn diese Option explizit auf `true` gesetzt ist.
+- **`.env` nicht committen** – sie ist in `.gitignore` und enthält das Secret.
+- **ALLOW_SHUTDOWN:** Nur auf `true` setzen, wenn du Remote-Shutdown wirklich erlauben willst.

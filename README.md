@@ -63,7 +63,7 @@ wol/
 ### Client (aktiv)
 - WebSocket-Verbindung zum Backend (Namespace `/ws`)
 - Authentifizierung mit Device-ID und Secret
-- Optionale Ausführung von System-Shutdown (`allowShutdown` in `config.json`)
+- Optionale Ausführung von System-Shutdown (`ALLOW_SHUTDOWN` in `.env`)
 
 ---
 
@@ -123,10 +123,10 @@ npm run dev
 
 ```bash
 cd client
-cp config.json.example config.json
-# config.json: deviceId, secret (vom Dashboard), serverUrl
+cp .env.example .env
+# .env: DEVICE_ID, SECRET, SERVER_URL (vom Dashboard „Download .env“), ALLOW_SHUTDOWN
 npm run dev
-# Mit eigener Config: npm run dev -- --config=./config-dev.json
+# Andere .env-Datei: npm run dev -- --config=./.env.production
 ```
 
 ---
@@ -177,7 +177,7 @@ curl -X POST http://localhost:3000/wol/{deviceId}/wake \
 
 ## Sicherheit
 
-- **Client-Shutdown:** Nur wenn in der lokalen `config.json` des Clients `allowShutdown: true` gesetzt ist.
+- **Client-Shutdown:** Nur wenn in der lokalen `.env` des Clients `ALLOW_SHUTDOWN=true` gesetzt ist.
 - **API-Tokens:** Werden gehasht gespeichert; Authentifizierung per Bearer-Header.
 - **Device-Secrets:** Pro Gerät (aktiv); werden für die WebSocket-Authentifizierung verwendet.
 - **OAuth2:** Login nur über Authentik; JWT für die Web-API.

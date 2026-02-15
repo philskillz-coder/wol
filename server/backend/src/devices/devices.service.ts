@@ -121,4 +121,30 @@ export class DevicesService {
       wsUrl: process.env.WS_URL || 'ws://localhost:3000/ws',
     };
   }
+
+  async regenerateSecret(deviceId: string, userId: string): Promise<{ secret: string }> {
+    const device = await this.findOne(deviceId, userId);
+
+    if (device.mode !== DeviceMode.ACTIVE) {
+      throw new Error('Secret can only be regenerated for ACTIVE mode devices');
+    }
+
+    const secret = await this.authService.generateDeviceSecret();
+
+    await this.prisma.device.update({
+      where: { id: deviceId },
+      data: { secret },
+    });
+
+    await this.prisma.log.create({
+      data: {
+        type: LogType.DEVICE_UPDATED,
+        message: `Device ${device.name} secret regenerated`,
+        deviceId: device.id,
+        userId,
+      },
+    });
+
+    return { secret };
+  }
 }

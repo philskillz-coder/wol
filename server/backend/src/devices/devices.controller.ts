@@ -64,4 +64,11 @@ export class DevicesController {
     const userId = req.user.id;
     return this.devicesService.generateConfig(id, userId);
   }
+
+  @Post(':id/regenerate-secret')
+  @UseGuards(JwtAuthGuard)
+  regenerateSecret(@Request() req, @Param('id') id: string) {
+    const userId = req.user.id;
+    return this.devicesService.regenerateSecret(id, userId);
+  }
 }
