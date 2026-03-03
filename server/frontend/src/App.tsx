@@ -1,10 +1,11 @@
-import { useState, useEffect, useRef } from 'react'
+import { useState, useEffect, useRef, useCallback } from 'react'
 import axios from 'axios'
 import { io, Socket } from 'socket.io-client'
 import DeviceCard from './components/DeviceCard'
 import DeviceForm from './components/DeviceForm'
 
-const API_URL = 'http://localhost:3000'
+// Diese Pfade werden durch deinen Reverse Proxy oder das Host-Networking aufgelöst
+const API_URL = '/api'
 const WS_NAMESPACE = '/ws'
 
 interface Device {
@@ -29,29 +30,67 @@ function App() {
 
   const socketRef = useRef<Socket | null>(null)
 
-  useEffect(() => {
-    checkAuth()
-  }, [])
-
-  useEffect(() => {
-    // Check for OAuth callback
-    const urlParams = new URLSearchParams(window.location.search)
-    const token = urlParams.get('token')
-    if (token) {
-      localStorage.setItem('token', token)
-      window.location.href = '/'
+  // Zentralisierte Funktion zum Laden aller Daten
+  const fetchData = useCallback(async (token: string) => {
+    try {
+      const [devRes, tokenRes] = await Promise.all([
+        axios.get(`${API_URL}/devices`, { headers: { Authorization: `Bearer ${token}` } }),
+        axios.get(`${API_URL}/api-tokens`, { headers: { Authorization: `Bearer ${token}` } })
+      ]);
+      setDevices(devRes.data)
+      setApiTokens(tokenRes.data)
+    } catch (error) {
+      console.error('Fehler beim Laden der Daten:', error)
     }
   }, [])
 
-  // WebSocket: live device status updates when a device connects/disconnects
+  const checkAuth = useCallback(async () => {
+    const token = localStorage.getItem('token')
+    if (!token) {
+      setLoading(false)
+      return
+    }
+
+    try {
+      const response = await axios.get(`${API_URL}/auth/me`, {
+        headers: { Authorization: `Bearer ${token}` },
+      })
+      setUser(response.data)
+      setIsAuthenticated(true)
+      await fetchData(token)
+    } catch (error) {
+      console.error('Session abgelaufen');
+      localStorage.removeItem('token')
+      setIsAuthenticated(false)
+    } finally {
+      setLoading(false)
+    }
+  }, [fetchData])
+
+  // Initialer Check & OAuth Handling
+  useEffect(() => {
+    const urlParams = new URLSearchParams(window.location.search)
+    const token = urlParams.get('token')
+    
+    if (token) {
+      localStorage.setItem('token', token)
+      // Entfernt den Query-Parameter aus der URL ohne Refresh
+      window.history.replaceState({}, document.title, "/")
+    }
+    
+    checkAuth()
+  }, [checkAuth])
+
+  // WebSocket Verbindung für Live-Updates
   useEffect(() => {
     if (!isAuthenticated) return
 
-    const wsUrl = new URL(API_URL)
-    const socket = io(`${wsUrl.origin}${WS_NAMESPACE}`, {
+    // Socket.io nutzt automatisch die aktuelle Domain, wenn nur der Pfad angegeben wird
+    const socket = io(WS_NAMESPACE, {
       path: '/socket.io',
       transports: ['websocket', 'polling'],
     })
+    
     socketRef.current = socket
 
     socket.on('device-status-changed', (payload: { deviceId: string; status: string }) => {
@@ -62,92 +101,44 @@ function App() {
       )
     })
 
-    socket.on('connect_error', () => {
-      // Optional: could show a small "Live updates disconnected" hint
-    })
-
     return () => {
       socket.disconnect()
       socketRef.current = null
     }
   }, [isAuthenticated])
 
-  const checkAuth = async () => {
-    try {
-      const token = localStorage.getItem('token')
-      if (!token) {
-        setLoading(false)
-        return
-      }
-
-      const response = await axios.get(`${API_URL}/auth/me`, {
-        headers: { Authorization: `Bearer ${token}` },
-      })
-      setUser(response.data)
-      setIsAuthenticated(true)
-      await loadDevices(token)
-      await loadApiTokens(token)
-    } catch (error) {
-      localStorage.removeItem('token')
-      setLoading(false)
-    }
-  }
-
-  const loadDevices = async (token: string) => {
-    try {
-      const response = await axios.get(`${API_URL}/devices`, {
-        headers: { Authorization: `Bearer ${token}` },
-      })
-      setDevices(response.data)
-    } catch (error) {
-      console.error('Failed to load devices:', error)
-    } finally {
-      setLoading(false)
-    }
-  }
-
-  const loadApiTokens = async (token: string) => {
-    try {
-      const response = await axios.get(`${API_URL}/api-tokens`, {
-        headers: { Authorization: `Bearer ${token}` },
-      })
-      setApiTokens(response.data)
-    } catch (error) {
-      console.error('Failed to load API tokens:', error)
-    }
-  }
+  // --- API Actions ---
 
   const handleLogin = () => {
     window.location.href = `${API_URL}/auth/authentik`
   }
 
+  const handleLogout = () => {
+    localStorage.removeItem('token')
+    setIsAuthenticated(false)
+    setUser(null)
+    setDevices([])
+  }
+
   const handleWake = async (deviceId: string) => {
+    const token = localStorage.getItem('token')
     try {
-      const token = localStorage.getItem('token')
-      await axios.post(
-        `${API_URL}/wol/${deviceId}/wake`,
-        {},
-        { headers: { Authorization: `Bearer ${token}` } }
-      )
-      alert('Wake signal sent!')
-      await loadDevices(token!)
+      await axios.post(`${API_URL}/wol/${deviceId}/wake`, {}, { 
+        headers: { Authorization: `Bearer ${token}` } 
+      })
     } catch (error: any) {
-      alert(`Failed to send wake signal: ${error.response?.data?.message || error.message}`)
+      alert(`Wake fehlgeschlagen: ${error.response?.data?.message || error.message}`)
     }
   }
 
   const handleShutdown = async (deviceId: string) => {
+    const token = localStorage.getItem('token')
     try {
-      const token = localStorage.getItem('token')
-      await axios.post(
-        `${API_URL}/wol/${deviceId}/shutdown`,
-        {},
-        { headers: { Authorization: `Bearer ${token}` } }
-      )
-      alert('Shutdown command sent!')
-      await loadDevices(token!)
+      await axios.post(`${API_URL}/wol/${deviceId}/shutdown`, {}, { 
+        headers: { Authorization: `Bearer ${token}` } 
+      })
     } catch (error: any) {
-      alert(`Failed to send shutdown command: ${error.response?.data?.message || error.message}`)
+      alert(`Shutdown fehlgeschlagen: ${error.response?.data?.message || error.message}`)
     }
   }
 
@@ -155,35 +146,32 @@ function App() {
     const token = localStorage.getItem('token')
     try {
       if (editingDevice) {
-        await axios.patch(
-          `${API_URL}/devices/${editingDevice.id}`,
-          formData,
-          { headers: { Authorization: `Bearer ${token}` } }
-        )
+        await axios.patch(`${API_URL}/devices/${editingDevice.id}`, formData, { 
+          headers: { Authorization: `Bearer ${token}` } 
+        })
       } else {
-        await axios.post(
-          `${API_URL}/devices`,
-          formData,
-          { headers: { Authorization: `Bearer ${token}` } }
-        )
+        await axios.post(`${API_URL}/devices`, formData, { 
+          headers: { Authorization: `Bearer ${token}` } 
+        })
       }
       setShowDeviceForm(false)
       setEditingDevice(null)
-      await loadDevices(token!)
+      if (token) fetchData(token)
     } catch (error: any) {
-      throw new Error(error.response?.data?.message || 'Failed to save device')
+      throw new Error(error.response?.data?.message || 'Fehler beim Speichern')
     }
   }
 
   const handleDeleteDevice = async (deviceId: string) => {
+    if (!confirm('Gerät wirklich löschen?')) return
     const token = localStorage.getItem('token')
     try {
       await axios.delete(`${API_URL}/devices/${deviceId}`, {
         headers: { Authorization: `Bearer ${token}` },
       })
-      await loadDevices(token!)
+      if (token) fetchData(token)
     } catch (error: any) {
-      throw new Error(error.response?.data?.message || 'Failed to delete device')
+      alert(`Löschen fehlgeschlagen: ${error.response?.data?.message || error.message}`)
     }
   }
 
@@ -194,101 +182,95 @@ function App() {
         headers: { Authorization: `Bearer ${token}` },
       })
       const { deviceId: id, secret, serverUrl } = response.data
-      const envLines = [
-        '# Wake-on-LAN Active Client – copy to client/.env',
+      const envContent = [
+        '# Wake-on-LAN Active Client Config',
         `DEVICE_ID=${id}`,
         `SECRET=${secret}`,
         `SERVER_URL=${serverUrl}`,
         'ALLOW_SHUTDOWN=false',
-      ]
-      const envContent = envLines.join('\n')
+      ].join('\n')
+
       const blob = new Blob([envContent], { type: 'text/plain' })
       const url = URL.createObjectURL(blob)
       const a = document.createElement('a')
       a.href = url
-      a.download = `device-${deviceId}.env`
-      document.body.appendChild(a)
+      a.download = `device-${id}.env`
       a.click()
-      document.body.removeChild(a)
       URL.revokeObjectURL(url)
     } catch (error: any) {
-      alert(`Failed to download config: ${error.response?.data?.message || error.message}`)
+      alert(`Config Download fehlgeschlagen: ${error.response?.data?.message || error.message}`)
     }
   }
 
   const handleRegenerateSecret = async (deviceId: string) => {
     const token = localStorage.getItem('token')
     try {
-      const response = await axios.post(
-        `${API_URL}/devices/${deviceId}/regenerate-secret`,
-        {},
-        { headers: { Authorization: `Bearer ${token}` } }
-      )
+      const response = await axios.post(`${API_URL}/devices/${deviceId}/regenerate-secret`, {}, { 
+        headers: { Authorization: `Bearer ${token}` } 
+      })
       const device = devices.find((d) => d.id === deviceId)
       setSecretModal({
         deviceName: device?.name ?? 'Device',
         secret: response.data.secret,
       })
-      await loadDevices(token!)
+      if (token) fetchData(token)
     } catch (error: any) {
-      alert(`Failed to regenerate secret: ${error.response?.data?.message || error.message}`)
+      alert(`Fehler: ${error.response?.data?.message || error.message}`)
     }
   }
 
   const handleCreateApiToken = async () => {
-    const name = prompt('Enter a name for the API token:')
+    const name = prompt('Name für den API Token:')
     if (!name) return
-
     const token = localStorage.getItem('token')
     try {
-      const response = await axios.post(
-        `${API_URL}/api-tokens`,
-        { name },
-        { headers: { Authorization: `Bearer ${token}` } }
-      )
-      
-      // Show token (only shown once!)
-      alert(`API Token created!\n\nToken: ${response.data.token}\n\nSave this token now - it won't be shown again!`)
-      
-      await loadApiTokens(token!)
+      const response = await axios.post(`${API_URL}/api-tokens`, { name }, { 
+        headers: { Authorization: `Bearer ${token}` } 
+      })
+      alert(`API Token erstellt!\n\nToken: ${response.data.token}\n\nSicher speichern, er wird nur einmal angezeigt!`)
+      if (token) fetchData(token)
     } catch (error: any) {
-      alert(`Failed to create API token: ${error.response?.data?.message || error.message}`)
+      alert(`Fehler: ${error.response?.data?.message || error.message}`)
     }
   }
 
   const handleDeleteApiToken = async (tokenId: string) => {
-    if (!confirm('Delete this API token?')) return
-
+    if (!confirm('API Token löschen?')) return
     const token = localStorage.getItem('token')
     try {
       await axios.delete(`${API_URL}/api-tokens/${tokenId}`, {
         headers: { Authorization: `Bearer ${token}` },
       })
-      await loadApiTokens(token!)
+      if (token) fetchData(token)
     } catch (error: any) {
-      alert(`Failed to delete API token: ${error.response?.data?.message || error.message}`)
+      alert(`Fehler: ${error.response?.data?.message || error.message}`)
     }
   }
 
+  // --- Rendering ---
+
   if (loading) {
     return (
-      <div className="min-h-screen flex items-center justify-center">
-        <div className="text-xl">Loading...</div>
+      <div className="min-h-screen flex items-center justify-center bg-gray-50">
+        <div className="flex flex-col items-center gap-4">
+          <div className="w-12 h-12 border-4 border-blue-600 border-t-transparent rounded-full animate-spin"></div>
+          <p className="text-gray-600 font-medium">Lade Dashboard...</p>
+        </div>
       </div>
     )
   }
 
   if (!isAuthenticated) {
     return (
-      <div className="min-h-screen flex items-center justify-center bg-gray-100">
-        <div className="bg-white p-8 rounded-lg shadow-md">
-          <h1 className="text-2xl font-bold mb-4">Wake-on-LAN Management</h1>
-          <p className="mb-6 text-gray-600">Please login to continue</p>
+      <div className="min-h-screen flex items-center justify-center bg-gray-100 p-4">
+        <div className="bg-white p-8 rounded-xl shadow-lg max-w-sm w-full text-center">
+          <h1 className="text-2xl font-bold mb-2">Wake-on-LAN</h1>
+          <p className="mb-6 text-gray-600">Bitte melde dich an, um deine Geräte zu verwalten.</p>
           <button
             onClick={handleLogin}
-            className="w-full bg-blue-600 text-white py-2 px-4 rounded hover:bg-blue-700"
+            className="w-full bg-blue-600 text-white py-3 px-4 rounded-lg font-semibold hover:bg-blue-700 transition-colors"
           >
-            Login with Authentik
+            Mit Authentik anmelden
           </button>
         </div>
       </div>
@@ -297,157 +279,134 @@ function App() {
 
   return (
     <div className="min-h-screen bg-gray-100">
-      <nav className="bg-white shadow">
+      <nav className="bg-white shadow-sm border-b">
         <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8">
-          <div className="flex justify-between h-16">
-            <div className="flex items-center">
-              <h1 className="text-xl font-semibold">Wake-on-LAN Management</h1>
-            </div>
+          <div className="flex justify-between h-16 items-center">
+            <h1 className="text-xl font-bold text-gray-900">WOL Manager</h1>
             <div className="flex items-center gap-4">
-              <span className="text-sm text-gray-700">{user?.email}</span>
+              <span className="text-sm text-gray-600 hidden sm:inline">{user?.email}</span>
               <button
-                onClick={() => {
-                  localStorage.removeItem('token')
-                  setIsAuthenticated(false)
-                  setUser(null)
-                  setDevices([])
-                }}
-                className="text-sm text-gray-600 hover:text-gray-900"
+                onClick={handleLogout}
+                className="text-sm font-medium text-red-600 hover:text-red-800"
               >
-                Logout
+                Abmelden
               </button>
             </div>
           </div>
         </div>
       </nav>
 
-      <main className="max-w-7xl mx-auto py-6 sm:px-6 lg:px-8">
-        <div className="px-4 py-6 sm:px-0">
-          {/* Devices Section */}
-          <div className="mb-8">
-            <div className="flex justify-between items-center mb-4">
-              <h2 className="text-2xl font-bold">Devices</h2>
-              <button
-                onClick={() => {
-                  setEditingDevice(null)
-                  setShowDeviceForm(true)
-                }}
-                className="bg-blue-600 text-white px-4 py-2 rounded hover:bg-blue-700"
-              >
-                + Add Device
-              </button>
-            </div>
+      <main className="max-w-7xl mx-auto py-8 px-4 sm:px-6 lg:px-8">
+        {/* Devices Header */}
+        <div className="flex justify-between items-center mb-6">
+          <h2 className="text-2xl font-bold text-gray-800">Geräte</h2>
+          <button
+            onClick={() => { setEditingDevice(null); setShowDeviceForm(true); }}
+            className="bg-blue-600 text-white px-4 py-2 rounded-lg hover:bg-blue-700 transition-shadow shadow-sm"
+          >
+            + Gerät hinzufügen
+          </button>
+        </div>
 
-            {devices.length === 0 ? (
-              <div className="text-center py-12 text-gray-500 bg-white rounded-lg shadow">
-                No devices found. Add a device to get started.
-              </div>
-            ) : (
-              <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-4">
-                {devices.map((device) => (
-                  <DeviceCard
-                    key={device.id}
-                    device={device}
-                    onWake={handleWake}
-                    onShutdown={handleShutdown}
-                    onEdit={(d) => {
-                      setEditingDevice(d)
-                      setShowDeviceForm(true)
-                    }}
-                    onDelete={handleDeleteDevice}
-                    onDownloadConfig={handleDownloadConfig}
-                    onRegenerateSecret={handleRegenerateSecret}
-                  />
-                ))}
-              </div>
-            )}
+        {/* Devices Grid */}
+        {devices.length === 0 ? (
+          <div className="bg-white rounded-xl p-12 text-center border-2 border-dashed border-gray-300">
+            <p className="text-gray-500">Noch keine Geräte registriert.</p>
+          </div>
+        ) : (
+          <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-6 mb-12">
+            {devices.map((device) => (
+              <DeviceCard
+                key={device.id}
+                device={device}
+                onWake={handleWake}
+                onShutdown={handleShutdown}
+                onEdit={(d) => { setEditingDevice(d); setShowDeviceForm(true); }}
+                onDelete={handleDeleteDevice}
+                onDownloadConfig={handleDownloadConfig}
+                onRegenerateSecret={handleRegenerateSecret}
+              />
+            ))}
+          </div>
+        )}
+
+        {/* API Tokens Section */}
+        <div className="bg-white rounded-xl shadow-sm p-6 border">
+          <div className="flex justify-between items-center mb-6">
+            <h2 className="text-xl font-bold text-gray-800">API Schnittstellen</h2>
+            <button
+              onClick={handleCreateApiToken}
+              className="text-sm bg-green-600 text-white px-3 py-1.5 rounded hover:bg-green-700 transition-colors"
+            >
+              Token erstellen
+            </button>
           </div>
 
-          {/* API Tokens Section */}
-          <div className="bg-white rounded-lg shadow p-6">
-            <div className="flex justify-between items-center mb-4">
-              <h2 className="text-2xl font-bold">API Tokens</h2>
-              <button
-                onClick={handleCreateApiToken}
-                className="bg-green-600 text-white px-4 py-2 rounded hover:bg-green-700"
-              >
-                + Create Token
-              </button>
-            </div>
-
+          <div className="space-y-3">
             {apiTokens.length === 0 ? (
-              <p className="text-gray-500">No API tokens created yet.</p>
+              <p className="text-sm text-gray-500 italic">Keine API Tokens aktiv.</p>
             ) : (
-              <div className="space-y-2">
-                {apiTokens.map((token) => (
-                  <div
-                    key={token.id}
-                    className="flex justify-between items-center p-3 bg-gray-50 rounded"
-                  >
-                    <div>
-                      <p className="font-medium">{token.name}</p>
-                      <p className="text-sm text-gray-500">
-                        Created: {new Date(token.createdAt).toLocaleDateString()}
-                        {token.lastUsedAt && (
-                          <> • Last used: {new Date(token.lastUsedAt).toLocaleDateString()}</>
-                        )}
-                      </p>
-                    </div>
-                    <button
-                      onClick={() => handleDeleteApiToken(token.id)}
-                      className="text-red-600 hover:text-red-800 text-sm"
-                    >
-                      Delete
-                    </button>
+              apiTokens.map((token) => (
+                <div key={token.id} className="flex justify-between items-center p-4 bg-gray-50 rounded-lg border">
+                  <div>
+                    <p className="font-semibold text-gray-800">{token.name}</p>
+                    <p className="text-xs text-gray-500">
+                      Erstellt: {new Date(token.createdAt).toLocaleDateString()}
+                      {token.lastUsedAt && ` • Zuletzt genutzt: ${new Date(token.lastUsedAt).toLocaleDateString()}`}
+                    </p>
                   </div>
-                ))}
-              </div>
+                  <button
+                    onClick={() => handleDeleteApiToken(token.id)}
+                    className="text-red-500 hover:bg-red-50 p-2 rounded-full transition-colors"
+                    title="Token löschen"
+                  >
+                    Löschen
+                  </button>
+                </div>
+              ))
             )}
           </div>
         </div>
       </main>
 
+      {/* Modals */}
       {showDeviceForm && (
         <DeviceForm
           device={editingDevice || undefined}
           onSave={handleSaveDevice}
-          onCancel={() => {
-            setShowDeviceForm(false)
-            setEditingDevice(null)
-          }}
+          onCancel={() => { setShowDeviceForm(false); setEditingDevice(null); }}
         />
       )}
 
       {secretModal && (
-        <div className="fixed inset-0 bg-black/50 flex items-center justify-center z-50 p-4">
-          <div className="bg-white rounded-lg shadow-xl max-w-md w-full p-6">
-            <h3 className="text-lg font-semibold mb-2">New secret: {secretModal.deviceName}</h3>
-            <p className="text-sm text-gray-600 mb-3">
-              Update your client config with this secret. It won&apos;t be shown again.
+        <div className="fixed inset-0 bg-black/60 backdrop-blur-sm flex items-center justify-center z-50 p-4">
+          <div className="bg-white rounded-2xl shadow-2xl max-w-md w-full p-6">
+            <h3 className="text-xl font-bold mb-4 text-gray-900">Neues Geheimnis: {secretModal.deviceName}</h3>
+            <p className="text-sm text-gray-600 mb-4">
+              Kopiere dieses Secret in deine Client-Konfiguration. Es wird <strong>nie wieder</strong> angezeigt.
             </p>
-            <div className="flex gap-2 mb-4">
+            <div className="flex gap-2 mb-6">
               <input
                 type="text"
                 readOnly
                 value={secretModal.secret}
-                className="flex-1 px-3 py-2 border border-gray-300 rounded text-sm font-mono bg-gray-50"
+                className="flex-1 px-4 py-2 bg-gray-100 border rounded-lg font-mono text-sm focus:outline-none"
               />
               <button
-                type="button"
                 onClick={() => {
-                  navigator.clipboard.writeText(secretModal.secret)
+                  navigator.clipboard.writeText(secretModal.secret);
+                  alert('Kopiert!');
                 }}
-                className="px-4 py-2 bg-gray-800 text-white rounded hover:bg-gray-900 text-sm"
+                className="bg-gray-800 text-white px-4 py-2 rounded-lg hover:bg-black transition-colors"
               >
                 Copy
               </button>
             </div>
             <button
-              type="button"
               onClick={() => setSecretModal(null)}
-              className="w-full py-2 bg-blue-600 text-white rounded hover:bg-blue-700"
+              className="w-full py-3 bg-blue-600 text-white rounded-xl font-bold hover:bg-blue-700"
             >
-              Close
+              Fertig
             </button>
           </div>
         </div>

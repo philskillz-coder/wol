@@ -4,9 +4,22 @@ services:
     container_name: wol-backend
     restart: unless-stopped
     network_mode: "host"
-    env_file: ./backend/.env # Lädt die restlichen NestJS-Variablen
     environment:
-      - PORT=${BACKEND_PORT} # Überschreibt den Port aus der zentralen .env
+      - DOMAIN=${DOMAIN}
+      - NODE_ENV=${NODE_ENV}
+      - BACKEND_URL=${BACKEND_URL}
+      - FRONTEND_URL=${FRONTEND_URL}
+      - DATABASE_URL=${DATABASE_URL}
+      - AUTHENTIK_AUTHORIZATION_URL=${AUTHENTIK_AUTHORIZATION_URL}
+      - AUTHENTIK_TOKEN_URL=${AUTHENTIK_TOKEN_URL}
+      - AUTHENTIK_USERINFO_URL=${AUTHENTIK_USERINFO_URL}
+      - AUTHENTIK_CLIENT_ID=${AUTHENTIK_CLIENT_ID}
+      - AUTHENTIK_CLIENT_SECRET=${AUTHENTIK_CLIENT_SECRET}
+      - AUTHENTIK_CALLBACK_URL=${AUTHENTIK_CALLBACK_URL}
+      - PORT=${BACKEND_PORT}
+      - JWT_SECRET=${JWT_SECRET}
+      - JWT_EXPIRES_IN=${JWT_EXPIRES_IN}
+      - SESSION_SECRET=${SESSION_SECRET}
 
   wol-frontend:
     build: ./frontend
@@ -15,5 +28,7 @@ services:
     network_mode: "host"
     environment:
       - PORT=${FRONTEND_PORT} # Reicht 6020 an den Frontend-Container weiter
+      - BACKEND_URL=${BACKEND_URL}
+      - FRONTEND_URL=${FRONTEND_URL}
     depends_on:
       - wol-backend

@@ -1,111 +1,60 @@
-import { Controller, Get, UseGuards, Request, Res, Query } from '@nestjs/common';
+import { Controller, Get, UseGuards, Request, Res, Query, Logger } from '@nestjs/common';
 import { AuthGuard } from '@nestjs/passport';
 import { AuthService } from './auth.service';
 import { JwtAuthGuard } from './guards/jwt-auth.guard';
 import { Response } from 'express';
 import { ConfigService } from '@nestjs/config';
-import { HttpService } from '@nestjs/axios';
-import { firstValueFrom } from 'rxjs';
 
 @Controller('auth')
 export class AuthController {
+  private readonly logger = new Logger(AuthController.name);
+  private readonly frontendUrl: string;
+
   constructor(
-    private authService: AuthService,
-    private configService: ConfigService,
-    private httpService: HttpService,
-  ) {}
+    private readonly authService: AuthService,
+    private readonly configService: ConfigService,
+  ) {
+    this.frontendUrl = this.configService.get<string>('FRONTEND_URL');
+  }
 
   @Get('authentik')
   @UseGuards(AuthGuard('authentik'))
   async authentikAuth() {
-    // Initiates Authentik OAuth flow
+    // Initiates Authentik OAuth flow via Passport Strategy
   }
 
   @Get('authentik/callback')
-  async authentikCallback(@Query('code') code: string, @Query('state') state: string, @Res() res: Response) {
+  async authentikCallback(@Query('code') code: string, @Res() res: Response) {
+    if (!code) {
+      return this.redirectWithError(res, 'no_code');
+    }
+
     try {
-      if (!code) {
-        return res.redirect(`${process.env.FRONTEND_URL || 'http://localhost:5173'}?error=no_code`);
-      }
+      // 1. Exchange Code & Get UserInfo (jetzt im Service)
+      const oauthData = await this.authService.handleAuthentikCallback(code);
 
-      // Exchange authorization code for access token
-      const tokenURL = this.configService.get<string>('AUTHENTIK_TOKEN_URL');
-      const clientID = this.configService.get<string>('AUTHENTIK_CLIENT_ID');
-      const clientSecret = this.configService.get<string>('AUTHENTIK_CLIENT_SECRET');
-      const callbackURL = this.configService.get<string>('AUTHENTIK_CALLBACK_URL');
-
-      // Authentik requires client credentials in request body
-      const postData = new URLSearchParams({
-        grant_type: 'authorization_code',
-        code: code,
-        redirect_uri: callbackURL,
-        client_id: clientID,
-        client_secret: clientSecret,
-      });
-
-      let tokenResponse;
-      try {
-        tokenResponse = await firstValueFrom(
-          this.httpService.post(tokenURL, postData.toString(), {
-            headers: {
-              'Content-Type': 'application/x-www-form-urlencoded',
-            },
-          }),
-        );
-      } catch (error: any) {
-        console.error('Token exchange error:', error.response?.data || error.message);
-        const frontendUrl = process.env.FRONTEND_URL || 'http://localhost:5173';
-        return res.redirect(`${frontendUrl}?error=token_exchange_failed&message=${encodeURIComponent(error.response?.data?.error_description || error.message)}`);
-      }
-
-      const { access_token } = tokenResponse.data;
-      if (!access_token) {
-        const frontendUrl = process.env.FRONTEND_URL || 'http://localhost:5173';
-        return res.redirect(`${frontendUrl}?error=no_access_token`);
-      }
-
-      // Fetch user info from Authentik
-      const userInfoUrl = this.configService.get<string>('AUTHENTIK_USERINFO_URL');
-      let userInfoResponse;
-      try {
-        userInfoResponse = await firstValueFrom(
-          this.httpService.get(userInfoUrl, {
-            headers: {
-              Authorization: `Bearer ${access_token}`,
-            },
-          }),
-        );
-      } catch (error: any) {
-        console.error('User info error:', error.response?.data || error.message);
-        const frontendUrl = process.env.FRONTEND_URL || 'http://localhost:5173';
-        return res.redirect(`${frontendUrl}?error=userinfo_failed`);
-      }
-
-      const userInfo = userInfoResponse.data;
-      const oauthData = {
-        oauthId: userInfo.sub || userInfo.id,
-        email: userInfo.email,
-        name: userInfo.name || userInfo.preferred_username,
-        provider: 'authentik',
-      };
-
-      // Create or update user
+      // 2. Validate User & Generate JWT
       const user = await this.authService.validateOAuthUser(oauthData);
-      const result = await this.authService.login(user);
-      
-      // Redirect to frontend with token
-      const frontendUrl = process.env.FRONTEND_URL || 'http://localhost:5173';
-      res.redirect(`${frontendUrl}/auth/callback?token=${result.access_token}`);
-    } catch (error: any) {
-      console.error('Authentik callback error:', error);
-      const frontendUrl = process.env.FRONTEND_URL || 'http://localhost:5173';
-      res.redirect(`${frontendUrl}?error=auth_failed&message=${encodeURIComponent(error.message)}`);
+      const { access_token } = await this.authService.login(user);
+
+      // 3. Success Redirect
+      return res.redirect(`${this.frontendUrl}?token=${access_token}`);
+    } catch (error) {
+      this.logger.error(`Authentik Callback Error: ${error.message}`);
+      return this.redirectWithError(res, 'auth_failed', error.message);
     }
   }
 
   @Get('me')
   @UseGuards(JwtAuthGuard)
-  async getProfile(@Request() req) {
+  getProfile(@Request() req) {
     return req.user;
+  }
+
+  private redirectWithError(res: Response, errorType: string, message?: string) {
+    const url = new URL(this.frontendUrl);
+    url.searchParams.append('error', errorType);
+    if (message) url.searchParams.append('message', message);
+    return res.redirect(url.toString());
   }
 }
