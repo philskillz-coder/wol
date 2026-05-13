@@ -7,6 +7,8 @@ interface Device {
   ipAddress?: string;
   mode: string;
   status: string;
+  passiveStatus?: string;
+  activeStatus?: string;
   lastSeen?: string;
 }
 
@@ -70,6 +72,8 @@ export default function DeviceCard({
 
   const isActive = device.mode === 'ACTIVE';
   const busy = loading !== null;
+  const passiveStatus = device.passiveStatus ?? (device.mode === 'PASSIVE' ? device.status : 'UNKNOWN');
+  const activeStatus = device.activeStatus ?? (device.mode === 'ACTIVE' ? device.status : 'UNKNOWN');
 
   return (
     <div className="bg-white shadow rounded-lg p-6">
@@ -89,16 +93,28 @@ export default function DeviceCard({
               <span className="font-medium">Mode:</span>{' '}
               <span className="capitalize">{device.mode.toLowerCase()}</span>
             </p>
-            <p>
-              <span className="font-medium">Status:</span>{' '}
-              <span
-                className={`px-2 py-1 rounded text-xs font-semibold ${getStatusColor(
-                  device.status,
-                )}`}
-              >
-                {device.status}
-              </span>
-            </p>
+            <div className="space-y-1">
+              <p>
+                <span className="font-medium">Passive:</span>{' '}
+                <span
+                  className={`px-2 py-1 rounded text-xs font-semibold ${getStatusColor(
+                    passiveStatus,
+                  )}`}
+                >
+                  {passiveStatus.toLowerCase()}
+                </span>
+              </p>
+              <p>
+                <span className="font-medium">Active:</span>{' '}
+                <span
+                  className={`px-2 py-1 rounded text-xs font-semibold ${getStatusColor(
+                    activeStatus,
+                  )}`}
+                >
+                  {activeStatus.toLowerCase()}
+                </span>
+              </p>
+            </div>
             {device.lastSeen && (
               <p className="text-xs text-gray-500">
                 Last seen: {new Date(device.lastSeen).toLocaleString()}

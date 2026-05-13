@@ -44,8 +44,8 @@ export class WebSocketGateway implements OnGatewayConnection, OnGatewayDisconnec
     if (client.deviceId) {
       this.activeClients.delete(client.deviceId);
       
-      // Update device status
-      await this.updateDeviceStatus(client.deviceId, DeviceStatus.OFFLINE);
+      // Update device status (only for ACTIVE mode devices)
+      const updated = await this.updateDeviceStatus(client.deviceId, DeviceStatus.OFFLINE);
       
       // Log disconnection
       await this.prisma.log.create({
@@ -58,10 +58,12 @@ export class WebSocketGateway implements OnGatewayConnection, OnGatewayDisconnec
       });
       
       // Notify all clients about status change
-      this.server.emit('device-status-changed', {
-        deviceId: client.deviceId,
-        status: DeviceStatus.OFFLINE,
-      });
+      if (updated) {
+        this.server.emit('device-status-changed', {
+          deviceId: client.deviceId,
+          status: DeviceStatus.OFFLINE,
+        });
+      }
     }
   }
 
@@ -106,7 +108,7 @@ export class WebSocketGateway implements OnGatewayConnection, OnGatewayDisconnec
       this.activeClients.set(device.id, client.id);
 
       // Update device status
-      await this.updateDeviceStatus(device.id, DeviceStatus.ONLINE);
+      const updated = await this.updateDeviceStatus(device.id, DeviceStatus.ONLINE);
 
       // Log connection
       await this.prisma.log.create({
@@ -119,10 +121,12 @@ export class WebSocketGateway implements OnGatewayConnection, OnGatewayDisconnec
       });
 
       // Notify all clients
-      this.server.emit('device-status-changed', {
-        deviceId: device.id,
-        status: DeviceStatus.ONLINE,
-      });
+      if (updated) {
+        this.server.emit('device-status-changed', {
+          deviceId: device.id,
+          status: DeviceStatus.ONLINE,
+        });
+      }
 
       client.emit('authenticated', { deviceId: device.id });
       this.logger.log(`Active client authenticated: ${device.name} (${device.id})`);
@@ -145,13 +149,15 @@ export class WebSocketGateway implements OnGatewayConnection, OnGatewayDisconnec
     this.logger.log(`Shutdown acknowledged by device: ${data.deviceId}`);
     
     // Update device status
-    await this.updateDeviceStatus(data.deviceId, DeviceStatus.OFFLINE);
+    const updated = await this.updateDeviceStatus(data.deviceId, DeviceStatus.OFFLINE);
     
     // Notify all clients
-    this.server.emit('device-status-changed', {
-      deviceId: data.deviceId,
-      status: DeviceStatus.OFFLINE,
-    });
+    if (updated) {
+      this.server.emit('device-status-changed', {
+        deviceId: data.deviceId,
+        status: DeviceStatus.OFFLINE,
+      });
+    }
   }
 
   @SubscribeMessage('heartbeat')
@@ -178,8 +184,15 @@ export class WebSocketGateway implements OnGatewayConnection, OnGatewayDisconnec
     return true;
   }
 
-  private async updateDeviceStatus(deviceId: string, status: DeviceStatus) {
+  private async updateDeviceStatus(deviceId: string, status: DeviceStatus): Promise<boolean> {
     try {
+      const device = await this.prisma.device.findUnique({
+        where: { id: deviceId },
+        select: { mode: true },
+      });
+      if (!device || device.mode !== DeviceMode.ACTIVE) {
+        return false;
+      }
       await this.prisma.device.update({
         where: { id: deviceId },
         data: {
@@ -187,8 +200,10 @@ export class WebSocketGateway implements OnGatewayConnection, OnGatewayDisconnec
           lastSeen: new Date(),
         },
       });
+      return true;
     } catch (error) {
       this.logger.error(`Error updating device status: ${error.message}`);
+      return false;
     }
   }
 
