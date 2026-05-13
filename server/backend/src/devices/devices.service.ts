@@ -3,13 +3,14 @@ import {
   NotFoundException,
   BadRequestException,
   ForbiddenException,
+  ConflictException,
 } from '@nestjs/common';
 import { ConfigService } from '@nestjs/config';
 import { PrismaService } from '../prisma/prisma.service';
 import { CreateDeviceDto } from './dto/create-device.dto';
 import { UpdateDeviceDto } from './dto/update-device.dto';
 import { AuthService } from '../auth/auth.service';
-import { DeviceMode, LogType } from '../types/enums';
+import { DeviceMode, DeviceStatus, LogType } from '../types/enums';
 
 @Injectable()
 export class DevicesService {
@@ -30,6 +31,18 @@ export class DevicesService {
       );
     }
 
+    const name = createDeviceDto.name.trim();
+    if (!name) {
+      throw new BadRequestException('Device name is required');
+    }
+    const existingByName = await this.prisma.device.findFirst({
+      where: { userId, name },
+      select: { id: true },
+    });
+    if (existingByName) {
+      throw new ConflictException(`A device named "${name}" already exists`);
+    }
+
     const mode = createDeviceDto.mode ?? DeviceMode.PASSIVE;
     if (mode === DeviceMode.PASSIVE && !createDeviceDto.ipAddress?.trim()) {
       throw new BadRequestException(
@@ -42,7 +55,10 @@ export class DevicesService {
     const device = await this.prisma.device.create({
       data: {
         ...createDeviceDto,
+        name,
         mode,
+        status: DeviceStatus.UNKNOWN,
+        lastSeen: null,
         secret,
         userId,
       },
@@ -61,7 +77,7 @@ export class DevicesService {
   }
 
   async findAll(userId: string, apiTokenDeviceScope?: string[]) {
-    return this.prisma.device.findMany({
+    const rows = await this.prisma.device.findMany({
       where: {
         userId,
         ...(apiTokenDeviceScope?.length
@@ -81,6 +97,14 @@ export class DevicesService {
         updatedAt: true,
       },
     });
+
+    return rows.map((row) => ({
+      ...row,
+      passiveStatus:
+        row.mode === DeviceMode.PASSIVE ? row.status : DeviceStatus.UNKNOWN,
+      activeStatus:
+        row.mode === DeviceMode.ACTIVE ? row.status : DeviceStatus.UNKNOWN,
+    }));
   }
 
   async findOne(id: string, userId: string, apiTokenDeviceScope?: string[]) {
@@ -109,6 +133,20 @@ export class DevicesService {
   ) {
     const device = await this.findOne(id, userId, apiTokenDeviceScope);
 
+    const nextName = updateDeviceDto.name?.trim();
+    if (updateDeviceDto.name !== undefined && !nextName) {
+      throw new BadRequestException('Device name is required');
+    }
+    if (nextName && nextName !== device.name) {
+      const duplicate = await this.prisma.device.findFirst({
+        where: { userId, name: nextName, NOT: { id } },
+        select: { id: true },
+      });
+      if (duplicate) {
+        throw new ConflictException(`A device named "${nextName}" already exists`);
+      }
+    }
+
     const nextMode = updateDeviceDto.mode ?? device.mode;
     const nextIp = updateDeviceDto.ipAddress ?? device.ipAddress ?? undefined;
     if (nextMode === DeviceMode.PASSIVE && !String(nextIp || '').trim()) {
@@ -117,9 +155,18 @@ export class DevicesService {
       );
     }
 
+    const modeChanged = updateDeviceDto.mode !== undefined && updateDeviceDto.mode !== device.mode;
+    const updateData = {
+      ...updateDeviceDto,
+      ...(updateDeviceDto.name !== undefined ? { name: nextName } : {}),
+      ...(modeChanged
+        ? { status: DeviceStatus.UNKNOWN, lastSeen: null }
+        : {}),
+    };
+
     const updated = await this.prisma.device.update({
       where: { id },
-      data: updateDeviceDto,
+      data: updateData,
     });
 
     await this.prisma.log.create({

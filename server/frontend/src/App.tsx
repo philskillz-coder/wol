@@ -15,6 +15,8 @@ interface Device {
   ipAddress?: string
   mode: string
   status: string
+  passiveStatus?: string
+  activeStatus?: string
   lastSeen?: string
 }
 
@@ -25,6 +27,13 @@ interface ApiTokenRow {
   createdAt: string
   expiresAt?: string
   deviceIds?: string[]
+}
+
+interface ApiTokenFormState {
+  mode: 'create' | 'edit'
+  tokenId?: string
+  name: string
+  deviceIds: string[]
 }
 
 function formatTokenDeviceScope(
@@ -48,6 +57,10 @@ function App() {
   const [editingDevice, setEditingDevice] = useState<Device | null>(null)
   const [apiTokens, setApiTokens] = useState<ApiTokenRow[]>([])
   const [secretModal, setSecretModal] = useState<{ deviceName: string; secret: string } | null>(null)
+  const [apiTokenModal, setApiTokenModal] = useState<ApiTokenFormState | null>(null)
+  const [apiTokenModalError, setApiTokenModalError] = useState('')
+  const [apiTokenModalSaving, setApiTokenModalSaving] = useState(false)
+  const [createdApiToken, setCreatedApiToken] = useState<{ token: string; scopeInfo: string } | null>(null)
 
   const socketRef = useRef<Socket | null>(null)
 
@@ -117,7 +130,14 @@ function App() {
     socket.on('device-status-changed', (payload: { deviceId: string; status: string }) => {
       setDevices((prev) =>
         prev.map((d) =>
-          d.id === payload.deviceId ? { ...d, status: payload.status } : d
+          d.id === payload.deviceId
+            ? {
+                ...d,
+                status: payload.status,
+                passiveStatus: d.mode === 'PASSIVE' ? payload.status : 'UNKNOWN',
+                activeStatus: d.mode === 'ACTIVE' ? payload.status : 'UNKNOWN',
+              }
+            : d
         )
       )
     })
@@ -241,68 +261,80 @@ function App() {
     }
   }
 
-  const handleCreateApiToken = async () => {
-    const name = prompt('Name für den API Token:')
-    if (!name) return
-    const idHint =
-      devices.length > 0
-        ? `Geräte (UUID):\n${devices.map((d) => `  ${d.name}: ${d.id}`).join('\n')}\n\n`
-        : ''
-    const scopeRaw = prompt(
-      `${idHint}Optional: nur bestimmte Geräte? UUIDs kommagetrennt einfügen.\n(Leerlassen = Zugriff auf alle Geräte)`,
-    )
-    const token = localStorage.getItem('token')
-    const body: { name: string; deviceIds?: string[] } = { name }
-    if (scopeRaw?.trim()) {
-      const ids = scopeRaw
-        .split(',')
-        .map((s) => s.trim())
-        .filter(Boolean)
-      if (ids.length) {
-        body.deviceIds = ids
-      }
-    }
-    try {
-      const response = await axios.post(`${API_URL}/api-tokens`, body, {
-        headers: { Authorization: `Bearer ${token}` },
-      })
-      const scopeNote =
-        response.data.deviceIds?.length > 0
-          ? `\n\nEingeschränkt auf ${response.data.deviceIds.length} Gerät(e).`
-          : '\n\nVoller Zugriff auf alle Geräte.'
-      alert(
-        `API Token erstellt!\n\nToken: ${response.data.token}\n\nSicher speichern, er wird nur einmal angezeigt!${scopeNote}`,
-      )
-      if (token) fetchData(token)
-    } catch (error: any) {
-      alert(`Fehler: ${error.response?.data?.message || error.message}`)
-    }
+  const openCreateApiTokenModal = () => {
+    setApiTokenModalError('')
+    setApiTokenModal({
+      mode: 'create',
+      name: '',
+      deviceIds: [],
+    })
   }
 
-  const handleEditApiTokenScope = async (tokenId: string) => {
-    const idHint =
-      devices.length > 0
-        ? `Geräte (UUID):\n${devices.map((d) => `  ${d.name}: ${d.id}`).join('\n')}\n\n`
-        : ''
-    const scopeRaw = prompt(
-      `${idHint}Neue Geräte-Liste: UUIDs kommagetrennt.\n(Leerlassen = wieder Zugriff auf alle Geräte)`,
-    )
-    if (scopeRaw === null) return
-    const deviceIds = scopeRaw
-      .trim()
-      .split(',')
-      .map((s) => s.trim())
-      .filter(Boolean)
+  const openEditApiTokenModal = (tokenRow: ApiTokenRow) => {
+    setApiTokenModalError('')
+    setApiTokenModal({
+      mode: 'edit',
+      tokenId: tokenRow.id,
+      name: tokenRow.name,
+      deviceIds: tokenRow.deviceIds ?? [],
+    })
+  }
+
+  const toggleTokenDevice = (deviceId: string) => {
+    if (!apiTokenModal) return
+    setApiTokenModal({
+      ...apiTokenModal,
+      deviceIds: apiTokenModal.deviceIds.includes(deviceId)
+        ? apiTokenModal.deviceIds.filter((id) => id !== deviceId)
+        : [...apiTokenModal.deviceIds, deviceId],
+    })
+  }
+
+  const handleSubmitApiTokenModal = async () => {
+    if (!apiTokenModal) return
     const token = localStorage.getItem('token')
+    setApiTokenModalError('')
+    setApiTokenModalSaving(true)
     try {
-      await axios.patch(
-        `${API_URL}/api-tokens/${tokenId}`,
-        { deviceIds },
-        { headers: { Authorization: `Bearer ${token}` } },
-      )
+      if (apiTokenModal.mode === 'create') {
+        const name = apiTokenModal.name.trim()
+        if (!name) {
+          setApiTokenModalError('Name ist erforderlich')
+          return
+        }
+        const response = await axios.post(
+          `${API_URL}/api-tokens`,
+          {
+            name,
+            ...(apiTokenModal.deviceIds.length
+              ? { deviceIds: apiTokenModal.deviceIds }
+              : {}),
+          },
+          { headers: { Authorization: `Bearer ${token}` } },
+        )
+        setCreatedApiToken({
+          token: response.data.token,
+          scopeInfo:
+            response.data.deviceIds?.length > 0
+              ? `Eingeschränkt auf ${response.data.deviceIds.length} Gerät(e).`
+              : 'Voller Zugriff auf alle Geräte.',
+        })
+      } else if (apiTokenModal.tokenId) {
+        await axios.patch(
+          `${API_URL}/api-tokens/${apiTokenModal.tokenId}`,
+          {
+            name: apiTokenModal.name.trim(),
+            deviceIds: apiTokenModal.deviceIds,
+          },
+          { headers: { Authorization: `Bearer ${token}` } },
+        )
+      }
+      setApiTokenModal(null)
       if (token) fetchData(token)
     } catch (error: any) {
-      alert(`Fehler: ${error.response?.data?.message || error.message}`)
+      setApiTokenModalError(error.response?.data?.message || error.message)
+    } finally {
+      setApiTokenModalSaving(false)
     }
   }
 
@@ -407,7 +439,7 @@ function App() {
           <div className="flex justify-between items-center mb-6">
             <h2 className="text-xl font-bold text-gray-800">API Schnittstellen</h2>
             <button
-              onClick={handleCreateApiToken}
+              onClick={openCreateApiTokenModal}
               className="text-sm bg-green-600 text-white px-3 py-1.5 rounded hover:bg-green-700 transition-colors"
             >
               Token erstellen
@@ -434,7 +466,7 @@ function App() {
                   <div className="flex shrink-0 gap-2">
                     <button
                       type="button"
-                      onClick={() => handleEditApiTokenScope(token.id)}
+                      onClick={() => openEditApiTokenModal(token)}
                       className="text-sm text-blue-600 hover:bg-blue-50 px-3 py-1.5 rounded border border-blue-200"
                     >
                       Zugriff bearbeiten
@@ -462,6 +494,118 @@ function App() {
           onSave={handleSaveDevice}
           onCancel={() => { setShowDeviceForm(false); setEditingDevice(null); }}
         />
+      )}
+
+      {apiTokenModal && (
+        <div className="fixed inset-0 bg-black/60 backdrop-blur-sm flex items-center justify-center z-50 p-4">
+          <div className="bg-white rounded-2xl shadow-2xl max-w-lg w-full p-6">
+            <h3 className="text-xl font-bold mb-4 text-gray-900">
+              {apiTokenModal.mode === 'create' ? 'API Token erstellen' : 'API Token bearbeiten'}
+            </h3>
+
+            <div className="space-y-4">
+              <div>
+                <label className="block text-sm font-medium text-gray-700 mb-1">Name</label>
+                <input
+                  type="text"
+                  value={apiTokenModal.name}
+                  onChange={(e) => setApiTokenModal({ ...apiTokenModal, name: e.target.value })}
+                  className="w-full px-3 py-2 border border-gray-300 rounded-md focus:outline-none focus:ring-2 focus:ring-blue-500"
+                />
+              </div>
+
+              <div>
+                <label className="block text-sm font-medium text-gray-700 mb-2">
+                  Gerätezugriff (Dropdown)
+                </label>
+                <details className="border border-gray-300 rounded-md">
+                  <summary className="px-3 py-2 cursor-pointer select-none text-sm text-gray-700">
+                    {apiTokenModal.deviceIds.length > 0
+                      ? `${apiTokenModal.deviceIds.length} Gerät(e) ausgewählt`
+                      : 'Alle Geräte (kein Filter)'}
+                  </summary>
+                  <div className="max-h-56 overflow-y-auto p-3 border-t space-y-2">
+                    {devices.length === 0 ? (
+                      <p className="text-sm text-gray-500">Keine Geräte vorhanden</p>
+                    ) : (
+                      devices.map((device) => (
+                        <label key={device.id} className="flex items-start gap-2 text-sm">
+                          <input
+                            type="checkbox"
+                            checked={apiTokenModal.deviceIds.includes(device.id)}
+                            onChange={() => toggleTokenDevice(device.id)}
+                            className="mt-0.5"
+                          />
+                          <span className="flex-1 min-w-0">
+                            <span className="font-medium">{device.name}</span>{' '}
+                            <span className="font-mono text-xs text-gray-500 break-all">{device.id}</span>
+                          </span>
+                        </label>
+                      ))
+                    )}
+                  </div>
+                </details>
+              </div>
+
+              {apiTokenModalError && (
+                <div className="bg-red-100 border border-red-300 text-red-700 text-sm px-3 py-2 rounded">
+                  {apiTokenModalError}
+                </div>
+              )}
+            </div>
+
+            <div className="flex gap-2 justify-end mt-6">
+              <button
+                type="button"
+                onClick={() => setApiTokenModal(null)}
+                disabled={apiTokenModalSaving}
+                className="px-4 py-2 text-gray-700 bg-gray-200 rounded hover:bg-gray-300 disabled:opacity-50"
+              >
+                Abbrechen
+              </button>
+              <button
+                type="button"
+                onClick={handleSubmitApiTokenModal}
+                disabled={apiTokenModalSaving}
+                className="px-4 py-2 bg-blue-600 text-white rounded hover:bg-blue-700 disabled:opacity-50"
+              >
+                {apiTokenModalSaving ? 'Speichere...' : 'Speichern'}
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
+
+      {createdApiToken && (
+        <div className="fixed inset-0 bg-black/60 backdrop-blur-sm flex items-center justify-center z-50 p-4">
+          <div className="bg-white rounded-2xl shadow-2xl max-w-md w-full p-6">
+            <h3 className="text-xl font-bold mb-4 text-gray-900">API Token erstellt</h3>
+            <p className="text-sm text-gray-600 mb-3">
+              Bitte sofort kopieren und sicher speichern. Er wird nur einmal angezeigt.
+            </p>
+            <p className="text-xs text-gray-500 mb-4">{createdApiToken.scopeInfo}</p>
+            <div className="flex gap-2 mb-6">
+              <input
+                type="text"
+                readOnly
+                value={createdApiToken.token}
+                className="flex-1 px-4 py-2 bg-gray-100 border rounded-lg font-mono text-sm focus:outline-none"
+              />
+              <button
+                onClick={() => navigator.clipboard.writeText(createdApiToken.token)}
+                className="bg-gray-800 text-white px-4 py-2 rounded-lg hover:bg-black transition-colors"
+              >
+                Copy
+              </button>
+            </div>
+            <button
+              onClick={() => setCreatedApiToken(null)}
+              className="w-full py-3 bg-blue-600 text-white rounded-xl font-bold hover:bg-blue-700"
+            >
+              Fertig
+            </button>
+          </div>
+        </div>
       )}
 
       {secretModal && (
