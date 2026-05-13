@@ -3,7 +3,6 @@
 
 generator client {
   provider = "prisma-client-js"
-  output   = "../node_modules/.prisma/client"
 }
 
 datasource db {
@@ -27,34 +26,47 @@ model User {
 }
 
 model Device {
-  id            String   @id @default(uuid())
-  name          String
-  macAddress    String
-  ipAddress     String?
-  mode          String   @default("PASSIVE") // DeviceMode: ACTIVE | PASSIVE
-  status        String   @default("UNKNOWN") // DeviceStatus: ONLINE | OFFLINE | STANDBY | UNKNOWN
-  lastSeen      DateTime?
-  secret        String   // Secret für Client-Authentifizierung
-  userId        String
-  user          User     @relation(fields: [userId], references: [id], onDelete: Cascade)
-  logs          Log[]
-  createdAt     DateTime @default(now())
-  updatedAt     DateTime @updatedAt
+  id              String           @id @default(uuid())
+  name            String
+  macAddress      String
+  ipAddress       String?
+  mode            String           @default("PASSIVE") // DeviceMode: ACTIVE | PASSIVE
+  status          String           @default("UNKNOWN") // DeviceStatus: ONLINE | OFFLINE | STANDBY | UNKNOWN
+  lastSeen        DateTime?
+  secret          String // Secret für Client-Authentifizierung
+  userId          String
+  user            User             @relation(fields: [userId], references: [id], onDelete: Cascade)
+  logs            Log[]
+  apiTokenDevices ApiTokenDevice[]
+  createdAt       DateTime         @default(now())
+  updatedAt       DateTime         @updatedAt
 
   @@map("devices")
 }
 
 model ApiToken {
-  id          String    @id @default(uuid())
-  name        String
-  token       String    @unique // Hashed token
-  lastUsedAt  DateTime?
-  userId      String
-  user        User      @relation(fields: [userId], references: [id], onDelete: Cascade)
-  createdAt   DateTime  @default(now())
-  expiresAt   DateTime?
+  id             String           @id @default(uuid())
+  name           String
+  token          String           @unique // Hashed token
+  lastUsedAt     DateTime?
+  userId         String
+  user           User             @relation(fields: [userId], references: [id], onDelete: Cascade)
+  allowedDevices ApiTokenDevice[]
+  createdAt      DateTime         @default(now())
+  expiresAt      DateTime?
 
   @@map("api_tokens")
+}
+
+// When empty: API token may access all of the user's devices. When non-empty: only listed devices.
+model ApiTokenDevice {
+  apiTokenId String
+  deviceId   String
+  apiToken   ApiToken @relation(fields: [apiTokenId], references: [id], onDelete: Cascade)
+  device     Device   @relation(fields: [deviceId], references: [id], onDelete: Cascade)
+
+  @@id([apiTokenId, deviceId])
+  @@map("api_token_devices")
 }
 
 model Log {

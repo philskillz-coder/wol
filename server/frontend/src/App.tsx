@@ -18,6 +18,27 @@ interface Device {
   lastSeen?: string
 }
 
+interface ApiTokenRow {
+  id: string
+  name: string
+  lastUsedAt?: string
+  createdAt: string
+  expiresAt?: string
+  deviceIds?: string[]
+}
+
+function formatTokenDeviceScope(
+  deviceIds: string[] | undefined,
+  allDevices: Device[],
+): string {
+  if (!deviceIds?.length) {
+    return 'Alle Geräte'
+  }
+  return deviceIds
+    .map((id) => allDevices.find((d) => d.id === id)?.name ?? id)
+    .join(', ')
+}
+
 function App() {
   const [isAuthenticated, setIsAuthenticated] = useState(false)
   const [user, setUser] = useState<any>(null)
@@ -25,7 +46,7 @@ function App() {
   const [loading, setLoading] = useState(true)
   const [showDeviceForm, setShowDeviceForm] = useState(false)
   const [editingDevice, setEditingDevice] = useState<Device | null>(null)
-  const [apiTokens, setApiTokens] = useState<any[]>([])
+  const [apiTokens, setApiTokens] = useState<ApiTokenRow[]>([])
   const [secretModal, setSecretModal] = useState<{ deviceName: string; secret: string } | null>(null)
 
   const socketRef = useRef<Socket | null>(null)
@@ -181,12 +202,13 @@ function App() {
       const response = await axios.get(`${API_URL}/devices/${deviceId}/config`, {
         headers: { Authorization: `Bearer ${token}` },
       })
-      const { deviceId: id, secret, serverUrl } = response.data
+      const { deviceId: id, secret, serverUrl, wsUrl } = response.data
       const envContent = [
         '# Wake-on-LAN Active Client Config',
         `DEVICE_ID=${id}`,
         `SECRET=${secret}`,
         `SERVER_URL=${serverUrl}`,
+        ...(wsUrl ? [`WS_URL=${wsUrl}`] : []),
         'ALLOW_SHUTDOWN=false',
       ].join('\n')
 
@@ -222,12 +244,62 @@ function App() {
   const handleCreateApiToken = async () => {
     const name = prompt('Name für den API Token:')
     if (!name) return
+    const idHint =
+      devices.length > 0
+        ? `Geräte (UUID):\n${devices.map((d) => `  ${d.name}: ${d.id}`).join('\n')}\n\n`
+        : ''
+    const scopeRaw = prompt(
+      `${idHint}Optional: nur bestimmte Geräte? UUIDs kommagetrennt einfügen.\n(Leerlassen = Zugriff auf alle Geräte)`,
+    )
+    const token = localStorage.getItem('token')
+    const body: { name: string; deviceIds?: string[] } = { name }
+    if (scopeRaw?.trim()) {
+      const ids = scopeRaw
+        .split(',')
+        .map((s) => s.trim())
+        .filter(Boolean)
+      if (ids.length) {
+        body.deviceIds = ids
+      }
+    }
+    try {
+      const response = await axios.post(`${API_URL}/api-tokens`, body, {
+        headers: { Authorization: `Bearer ${token}` },
+      })
+      const scopeNote =
+        response.data.deviceIds?.length > 0
+          ? `\n\nEingeschränkt auf ${response.data.deviceIds.length} Gerät(e).`
+          : '\n\nVoller Zugriff auf alle Geräte.'
+      alert(
+        `API Token erstellt!\n\nToken: ${response.data.token}\n\nSicher speichern, er wird nur einmal angezeigt!${scopeNote}`,
+      )
+      if (token) fetchData(token)
+    } catch (error: any) {
+      alert(`Fehler: ${error.response?.data?.message || error.message}`)
+    }
+  }
+
+  const handleEditApiTokenScope = async (tokenId: string) => {
+    const idHint =
+      devices.length > 0
+        ? `Geräte (UUID):\n${devices.map((d) => `  ${d.name}: ${d.id}`).join('\n')}\n\n`
+        : ''
+    const scopeRaw = prompt(
+      `${idHint}Neue Geräte-Liste: UUIDs kommagetrennt.\n(Leerlassen = wieder Zugriff auf alle Geräte)`,
+    )
+    if (scopeRaw === null) return
+    const deviceIds = scopeRaw
+      .trim()
+      .split(',')
+      .map((s) => s.trim())
+      .filter(Boolean)
     const token = localStorage.getItem('token')
     try {
-      const response = await axios.post(`${API_URL}/api-tokens`, { name }, { 
-        headers: { Authorization: `Bearer ${token}` } 
-      })
-      alert(`API Token erstellt!\n\nToken: ${response.data.token}\n\nSicher speichern, er wird nur einmal angezeigt!`)
+      await axios.patch(
+        `${API_URL}/api-tokens/${tokenId}`,
+        { deviceIds },
+        { headers: { Authorization: `Bearer ${token}` } },
+      )
       if (token) fetchData(token)
     } catch (error: any) {
       alert(`Fehler: ${error.response?.data?.message || error.message}`)
@@ -347,21 +419,35 @@ function App() {
               <p className="text-sm text-gray-500 italic">Keine API Tokens aktiv.</p>
             ) : (
               apiTokens.map((token) => (
-                <div key={token.id} className="flex justify-between items-center p-4 bg-gray-50 rounded-lg border">
-                  <div>
+                <div key={token.id} className="flex flex-col sm:flex-row sm:justify-between sm:items-center gap-3 p-4 bg-gray-50 rounded-lg border">
+                  <div className="min-w-0">
                     <p className="font-semibold text-gray-800">{token.name}</p>
                     <p className="text-xs text-gray-500">
                       Erstellt: {new Date(token.createdAt).toLocaleDateString()}
                       {token.lastUsedAt && ` • Zuletzt genutzt: ${new Date(token.lastUsedAt).toLocaleDateString()}`}
                     </p>
+                    <p className="text-xs text-gray-600 mt-1">
+                      <span className="font-medium">Geräte:</span>{' '}
+                      {formatTokenDeviceScope(token.deviceIds, devices)}
+                    </p>
                   </div>
-                  <button
-                    onClick={() => handleDeleteApiToken(token.id)}
-                    className="text-red-500 hover:bg-red-50 p-2 rounded-full transition-colors"
-                    title="Token löschen"
-                  >
-                    Löschen
-                  </button>
+                  <div className="flex shrink-0 gap-2">
+                    <button
+                      type="button"
+                      onClick={() => handleEditApiTokenScope(token.id)}
+                      className="text-sm text-blue-600 hover:bg-blue-50 px-3 py-1.5 rounded border border-blue-200"
+                    >
+                      Zugriff bearbeiten
+                    </button>
+                    <button
+                      type="button"
+                      onClick={() => handleDeleteApiToken(token.id)}
+                      className="text-sm text-red-600 hover:bg-red-50 px-3 py-1.5 rounded border border-red-200"
+                      title="Token löschen"
+                    >
+                      Löschen
+                    </button>
+                  </div>
                 </div>
               ))
             )}

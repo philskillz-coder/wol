@@ -1,17 +1,28 @@
 import { NestFactory } from '@nestjs/core';
 import { ValidationPipe } from '@nestjs/common';
+import { ConfigService } from '@nestjs/config';
 import { AppModule } from './app.module';
 
 async function bootstrap() {
   const app = await NestFactory.create(AppModule);
-  
-  // Enable CORS for frontend
+  const config = app.get(ConfigService);
+
+  const port = parseInt(
+    String(config.get('BACKEND_PORT') ?? config.get('PORT') ?? '3000'),
+    10,
+  );
+  const frontendUrl = config.get<string>('FRONTEND_URL')?.trim();
+  if (!frontendUrl) {
+    throw new Error(
+      'FRONTEND_URL must be set (e.g. in server/.env). Used for CORS and OAuth redirects.',
+    );
+  }
+
   app.enableCors({
-    origin: process.env.FRONTEND_URL || 'http://localhost:5173',
+    origin: frontendUrl,
     credentials: true,
   });
 
-  // Global validation pipe
   app.useGlobalPipes(
     new ValidationPipe({
       whitelist: true,
@@ -20,9 +31,10 @@ async function bootstrap() {
     }),
   );
 
-  const port = process.env.PORT || 3000;
   await app.listen(port);
-  console.log(`🚀 Backend running on http://localhost:${port}`);
+  const backendUrl =
+    config.get<string>('BACKEND_URL')?.trim() || `http://127.0.0.1:${port}`;
+  console.log(`Backend listening on ${port} — ${backendUrl}`);
 }
 
 bootstrap();

@@ -14,11 +14,13 @@
     "dev:client": "cd client && npm run dev",
     "dev": "concurrently \"npm run dev:backend\" \"npm run dev:frontend\"",
     "build": "npm run build --workspace=server/backend && npm run build --workspace=server/frontend && npm run build --workspace=client",
-    "prisma:generate": "cd server/backend && npx prisma generate",
-    "prisma:migrate": "cd server/backend && npx prisma migrate dev",
-    "prisma:studio": "cd server/backend && npx prisma studio"
+    "prisma:generate": "cd server/backend && npx --yes dotenv-cli -e ../.env -- npx prisma generate",
+    "prisma:migrate": "cd server/backend && npx --yes dotenv-cli -e ../.env -- npx prisma migrate dev",
+    "prisma:studio": "cd server/backend && npx --yes dotenv-cli -e ../.env -- npx prisma studio",
+    "docker:up": "cd server && docker compose up --build"
   },
   "devDependencies": {
+    "dotenv-cli": "^7.4.2",
     "@types/passport-github2": "^1.2.9",
     "@types/passport-google-oauth20": "^2.0.17",
     "concurrently": "^8.2.2"

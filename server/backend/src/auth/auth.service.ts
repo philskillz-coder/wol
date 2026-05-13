@@ -3,6 +3,9 @@ import { JwtService } from '@nestjs/jwt';
 import { ConfigService } from '@nestjs/config';
 import { HttpService } from '@nestjs/axios';
 import { firstValueFrom } from 'rxjs';
+import * as crypto from 'crypto';
+import { PrismaService } from '../prisma/prisma.service';
+import { User } from '@prisma/client';
 
 // Interface für die konsistente Datenübergabe
 export interface AuthentikUser {
@@ -20,8 +23,7 @@ export class AuthService {
     private readonly jwtService: JwtService,
     private readonly configService: ConfigService,
     private readonly httpService: HttpService,
-    // Falls du eine DB nutzt:
-    // private readonly userService: UserService, 
+    private readonly prisma: PrismaService,
   ) {}
 
   /**
@@ -74,23 +76,39 @@ export class AuthService {
   }
 
   /**
-   * Findet oder erstellt den User in der Datenbank
+   * Findet oder erstellt den User in der Datenbank (JWT sub muss die DB-User-ID sein).
    */
-  async validateOAuthUser(profile: AuthentikUser) {
-    // Hier würdest du normalerweise checken: Existiert der User in der DB?
-    // Falls nein -> create, falls ja -> update.
-    // Beispiel (pseudo): return this.userService.findOrCreate(profile);
-    return profile; 
+  async validateOAuthUser(profile: AuthentikUser): Promise<User> {
+    return this.prisma.user.upsert({
+      where: { oauthId: profile.oauthId },
+      create: {
+        oauthId: profile.oauthId,
+        email: profile.email,
+        name: profile.name ?? null,
+        provider: profile.provider,
+      },
+      update: {
+        email: profile.email,
+        name: profile.name ?? null,
+      },
+    });
+  }
+
+  /**
+   * Kryptographisch sicheres Secret für ACTIVE-Mode Geräte-Clients.
+   */
+  generateDeviceSecret(): Promise<string> {
+    return Promise.resolve(crypto.randomBytes(32).toString('hex'));
   }
 
   /**
    * Erstellt das finale JWT für deine App
    */
-  async login(user: any) {
-    const payload = { 
-      email: user.email, 
-      sub: user.oauthId,
-      name: user.name 
+  async login(user: Pick<User, 'id' | 'email' | 'name'>) {
+    const payload = {
+      email: user.email,
+      sub: user.id,
+      name: user.name ?? undefined,
     };
     return {
       access_token: this.jwtService.sign(payload),

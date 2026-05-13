@@ -12,63 +12,69 @@ import {
 import { DevicesService } from './devices.service';
 import { CreateDeviceDto } from './dto/create-device.dto';
 import { UpdateDeviceDto } from './dto/update-device.dto';
-import { JwtAuthGuard } from '../auth/guards/jwt-auth.guard';
-import { ApiTokenGuard } from '../auth/guards/api-token.guard';
+import { JwtOrApiTokenGuard } from '../auth/guards/jwt-or-api-token.guard';
 
 @Controller('devices')
 export class DevicesController {
   constructor(private readonly devicesService: DevicesService) {}
 
   @Post()
-  @UseGuards(JwtAuthGuard)
+  @UseGuards(JwtOrApiTokenGuard)
   create(@Request() req, @Body() createDeviceDto: CreateDeviceDto) {
     const userId = req.user.id;
-    return this.devicesService.create(userId, createDeviceDto);
+    const scope = req.user.apiTokenDeviceScope as string[] | undefined;
+    return this.devicesService.create(userId, createDeviceDto, scope);
   }
 
   @Get()
-  @UseGuards(JwtAuthGuard)
+  @UseGuards(JwtOrApiTokenGuard)
   findAll(@Request() req) {
     const userId = req.user.id;
-    return this.devicesService.findAll(userId);
+    const scope = req.user.apiTokenDeviceScope as string[] | undefined;
+    return this.devicesService.findAll(userId, scope);
   }
 
   @Get(':id')
-  @UseGuards(JwtAuthGuard)
+  @UseGuards(JwtOrApiTokenGuard)
   findOne(@Request() req, @Param('id') id: string) {
     const userId = req.user.id;
-    return this.devicesService.findOne(id, userId);
+    const scope = req.user.apiTokenDeviceScope as string[] | undefined;
+    return this.devicesService.findOne(id, userId, scope);
   }
 
   @Patch(':id')
-  @UseGuards(JwtAuthGuard)
+  @UseGuards(JwtOrApiTokenGuard)
   update(
     @Request() req,
     @Param('id') id: string,
     @Body() updateDeviceDto: UpdateDeviceDto,
   ) {
     const userId = req.user.id;
-    return this.devicesService.update(id, userId, updateDeviceDto);
+    const scope = req.user.apiTokenDeviceScope as string[] | undefined;
+    return this.devicesService.update(id, userId, updateDeviceDto, scope);
   }
 
   @Delete(':id')
-  @UseGuards(JwtAuthGuard)
+  @UseGuards(JwtOrApiTokenGuard)
   remove(@Request() req, @Param('id') id: string) {
     const userId = req.user.id;
-    return this.devicesService.remove(id, userId);
+    const scope = req.user.apiTokenDeviceScope as string[] | undefined;
+    return this.devicesService.remove(id, userId, scope);
   }
 
   @Get(':id/config')
-  @UseGuards(JwtAuthGuard)
+  @UseGuards(JwtOrApiTokenGuard)
   generateConfig(@Request() req, @Param('id') id: string) {
     const userId = req.user.id;
-    return this.devicesService.generateConfig(id, userId);
+    const scope = req.user.apiTokenDeviceScope as string[] | undefined;
+    return this.devicesService.generateConfig(id, userId, scope);
   }
 
   @Post(':id/regenerate-secret')
-  @UseGuards(JwtAuthGuard)
+  @UseGuards(JwtOrApiTokenGuard)
   regenerateSecret(@Request() req, @Param('id') id: string) {
     const userId = req.user.id;
-    return this.devicesService.regenerateSecret(id, userId);
+    const scope = req.user.apiTokenDeviceScope as string[] | undefined;
+    return this.devicesService.regenerateSecret(id, userId, scope);
   }
 }

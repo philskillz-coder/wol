@@ -10,7 +10,8 @@ export class WolController {
   @UseGuards(JwtOrApiTokenGuard)
   async wake(@Request() req, @Param('deviceId') deviceId: string) {
     const userId = req.user.id;
-    const success = await this.wolService.wakeDevice(deviceId, userId);
+    const scope = req.user.apiTokenDeviceScope as string[] | undefined;
+    const success = await this.wolService.wakeDevice(deviceId, userId, scope);
     return { success, message: 'Wake signal sent' };
   }
 
@@ -18,7 +19,11 @@ export class WolController {
   @UseGuards(JwtOrApiTokenGuard)
   async shutdown(@Request() req, @Param('deviceId') deviceId: string) {
     const userId = req.user.id;
-    const success = await this.wolService.shutdownDevice(deviceId, userId);
-    return { success, message: success ? 'Shutdown command sent' : 'Device not connected' };
+    const scope = req.user.apiTokenDeviceScope as string[] | undefined;
+    const success = await this.wolService.shutdownDevice(deviceId, userId, scope);
+    return {
+      success,
+      message: success ? 'Shutdown command sent' : 'Device not connected',
+    };
   }
 }

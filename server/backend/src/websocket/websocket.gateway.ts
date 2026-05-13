@@ -19,7 +19,7 @@ interface AuthenticatedSocket extends Socket {
 
 @WSGateway({
   cors: {
-    origin: process.env.FRONTEND_URL || 'http://localhost:5173',
+    origin: process.env.FRONTEND_URL,
     credentials: true,
   },
   namespace: '/ws',
@@ -165,23 +165,17 @@ export class WebSocketGateway implements OnGatewayConnection, OnGatewayDisconnec
   }
 
   async sendShutdownCommand(deviceId: string): Promise<boolean> {
-    if (!this.server?.sockets) {
-      this.logger.warn('WebSocket server or namespace not ready');
+    if (!this.server) {
+      this.logger.warn('WebSocket namespace server not ready');
       return false;
     }
     const socketId = this.activeClients.get(deviceId);
     if (!socketId) {
       return false;
     }
-    // Socket.IO v4: namespace.sockets is a Map; TS types expose it as Namespace, so we assert
-    const socketsMap = this.server.sockets as unknown as Map<string, AuthenticatedSocket>;
-    const client = socketsMap.get(socketId);
-    if (client) {
-      client.emit('shutdown', { deviceId });
-      this.logger.log(`Shutdown command sent to device: ${deviceId}`);
-      return true;
-    }
-    return false;
+    this.server.to(socketId).emit('shutdown', { deviceId });
+    this.logger.log(`Shutdown command sent to device: ${deviceId}`);
+    return true;
   }
 
   private async updateDeviceStatus(deviceId: string, status: DeviceStatus) {

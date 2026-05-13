@@ -3,32 +3,21 @@ services:
     build: ./backend
     container_name: wol-backend
     restart: unless-stopped
-    network_mode: "host"
-    environment:
-      - DOMAIN=${DOMAIN}
-      - NODE_ENV=${NODE_ENV}
-      - BACKEND_URL=${BACKEND_URL}
-      - FRONTEND_URL=${FRONTEND_URL}
-      - DATABASE_URL=${DATABASE_URL}
-      - AUTHENTIK_AUTHORIZATION_URL=${AUTHENTIK_AUTHORIZATION_URL}
-      - AUTHENTIK_TOKEN_URL=${AUTHENTIK_TOKEN_URL}
-      - AUTHENTIK_USERINFO_URL=${AUTHENTIK_USERINFO_URL}
-      - AUTHENTIK_CLIENT_ID=${AUTHENTIK_CLIENT_ID}
-      - AUTHENTIK_CLIENT_SECRET=${AUTHENTIK_CLIENT_SECRET}
-      - AUTHENTIK_CALLBACK_URL=${AUTHENTIK_CALLBACK_URL}
-      - PORT=${BACKEND_PORT}
-      - JWT_SECRET=${JWT_SECRET}
-      - JWT_EXPIRES_IN=${JWT_EXPIRES_IN}
-      - SESSION_SECRET=${SESSION_SECRET}
+    network_mode: host
+    env_file:
+      - .env
 
   wol-frontend:
-    build: ./frontend
+    build:
+      context: ./frontend
+      dockerfile: Dockerfile
+      args:
+        BACKEND_URL: ${BACKEND_URL:-http://127.0.0.1:6010}
+        FRONTEND_PORT: ${FRONTEND_PORT:-6020}
     container_name: wol-frontend
     restart: unless-stopped
-    network_mode: "host"
-    environment:
-      - PORT=${FRONTEND_PORT} # Reicht 6020 an den Frontend-Container weiter
-      - BACKEND_URL=${BACKEND_URL}
-      - FRONTEND_URL=${FRONTEND_URL}
+    network_mode: host
+    env_file:
+      - .env
     depends_on:
       - wol-backend

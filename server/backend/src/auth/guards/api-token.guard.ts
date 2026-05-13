@@ -19,10 +19,14 @@ export class ApiTokenGuard implements CanActivate {
     }
 
     const token = authHeader.substring(7); // Remove 'Bearer ' prefix
-    const userId = await this.apiTokensService.validateToken(token);
+    const auth = await this.apiTokensService.validateToken(token);
 
-    // Attach user ID to request
-    request.user = { id: userId };
+    request.user = {
+      id: auth.userId,
+      ...(auth.apiTokenDeviceScope?.length
+        ? { apiTokenDeviceScope: auth.apiTokenDeviceScope }
+        : {}),
+    };
     return true;
   }
 }

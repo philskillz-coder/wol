@@ -1,4 +1,10 @@
-import { Injectable, NotFoundException } from '@nestjs/common';
+import {
+  Injectable,
+  NotFoundException,
+  BadRequestException,
+  ForbiddenException,
+} from '@nestjs/common';
+import { ConfigService } from '@nestjs/config';
 import { PrismaService } from '../prisma/prisma.service';
 import { CreateDeviceDto } from './dto/create-device.dto';
 import { UpdateDeviceDto } from './dto/update-device.dto';
@@ -10,20 +16,38 @@ export class DevicesService {
   constructor(
     private prisma: PrismaService,
     private authService: AuthService,
+    private readonly config: ConfigService,
   ) {}
 
-  async create(userId: string, createDeviceDto: CreateDeviceDto) {
+  async create(
+    userId: string,
+    createDeviceDto: CreateDeviceDto,
+    apiTokenDeviceScope?: string[],
+  ) {
+    if (apiTokenDeviceScope?.length) {
+      throw new ForbiddenException(
+        'This API token is limited to specific devices and cannot create new ones',
+      );
+    }
+
+    const mode = createDeviceDto.mode ?? DeviceMode.PASSIVE;
+    if (mode === DeviceMode.PASSIVE && !createDeviceDto.ipAddress?.trim()) {
+      throw new BadRequestException(
+        'Passive mode requires an IP address for ping-based status',
+      );
+    }
+
     const secret = await this.authService.generateDeviceSecret();
 
     const device = await this.prisma.device.create({
       data: {
         ...createDeviceDto,
+        mode,
         secret,
         userId,
       },
     });
 
-    // Log device creation
     await this.prisma.log.create({
       data: {
         type: LogType.DEVICE_CREATED,
@@ -36,9 +60,14 @@ export class DevicesService {
     return device;
   }
 
-  async findAll(userId: string) {
+  async findAll(userId: string, apiTokenDeviceScope?: string[]) {
     return this.prisma.device.findMany({
-      where: { userId },
+      where: {
+        userId,
+        ...(apiTokenDeviceScope?.length
+          ? { id: { in: apiTokenDeviceScope } }
+          : {}),
+      },
       orderBy: { createdAt: 'desc' },
       select: {
         id: true,
@@ -50,12 +79,11 @@ export class DevicesService {
         lastSeen: true,
         createdAt: true,
         updatedAt: true,
-        // Don't expose secret in list
       },
     });
   }
 
-  async findOne(id: string, userId: string) {
+  async findOne(id: string, userId: string, apiTokenDeviceScope?: string[]) {
     const device = await this.prisma.device.findFirst({
       where: { id, userId },
     });
@@ -64,18 +92,36 @@ export class DevicesService {
       throw new NotFoundException(`Device with ID ${id} not found`);
     }
 
+    if (apiTokenDeviceScope?.length && !apiTokenDeviceScope.includes(device.id)) {
+      throw new ForbiddenException(
+        'This API token is not allowed to access this device',
+      );
+    }
+
     return device;
   }
 
-  async update(id: string, userId: string, updateDeviceDto: UpdateDeviceDto) {
-    const device = await this.findOne(id, userId);
+  async update(
+    id: string,
+    userId: string,
+    updateDeviceDto: UpdateDeviceDto,
+    apiTokenDeviceScope?: string[],
+  ) {
+    const device = await this.findOne(id, userId, apiTokenDeviceScope);
+
+    const nextMode = updateDeviceDto.mode ?? device.mode;
+    const nextIp = updateDeviceDto.ipAddress ?? device.ipAddress ?? undefined;
+    if (nextMode === DeviceMode.PASSIVE && !String(nextIp || '').trim()) {
+      throw new BadRequestException(
+        'Passive mode requires an IP address for ping-based status',
+      );
+    }
 
     const updated = await this.prisma.device.update({
       where: { id },
       data: updateDeviceDto,
     });
 
-    // Log device update
     await this.prisma.log.create({
       data: {
         type: LogType.DEVICE_UPDATED,
@@ -88,14 +134,13 @@ export class DevicesService {
     return updated;
   }
 
-  async remove(id: string, userId: string) {
-    const device = await this.findOne(id, userId);
+  async remove(id: string, userId: string, apiTokenDeviceScope?: string[]) {
+    const device = await this.findOne(id, userId, apiTokenDeviceScope);
 
     await this.prisma.device.delete({
       where: { id },
     });
 
-    // Log device deletion
     await this.prisma.log.create({
       data: {
         type: LogType.DEVICE_DELETED,
@@ -107,26 +152,57 @@ export class DevicesService {
     return { message: 'Device deleted successfully' };
   }
 
-  async generateConfig(deviceId: string, userId: string) {
-    const device = await this.findOne(deviceId, userId);
+  async generateConfig(
+    deviceId: string,
+    userId: string,
+    apiTokenDeviceScope?: string[],
+  ) {
+    const device = await this.findOne(deviceId, userId, apiTokenDeviceScope);
 
     if (device.mode !== DeviceMode.ACTIVE) {
-      throw new Error('Config can only be generated for ACTIVE mode devices');
+      throw new BadRequestException(
+        'Config can only be generated for ACTIVE mode devices',
+      );
     }
 
     return {
       deviceId: device.id,
       secret: device.secret,
-      serverUrl: process.env.SERVER_URL || 'http://localhost:3000',
-      wsUrl: process.env.WS_URL || 'ws://localhost:3000/ws',
+      ...this.getDeviceClientUrls(),
     };
   }
 
-  async regenerateSecret(deviceId: string, userId: string): Promise<{ secret: string }> {
-    const device = await this.findOne(deviceId, userId);
+  private getDeviceClientUrls(): { serverUrl: string; wsUrl: string } {
+    const explicitServer = this.config.get<string>('SERVER_URL')?.trim();
+    const backend = (
+      explicitServer ||
+      this.config.get<string>('BACKEND_URL')?.trim() ||
+      'http://localhost:3000'
+    ).replace(/\/$/, '');
+    const explicitWs = this.config.get<string>('WS_URL')?.trim();
+    if (explicitWs) {
+      return { serverUrl: backend, wsUrl: explicitWs };
+    }
+    try {
+      const u = new URL(backend);
+      u.protocol = u.protocol === 'https:' ? 'wss:' : 'ws:';
+      return { serverUrl: backend, wsUrl: `${u.origin}/ws` };
+    } catch {
+      return { serverUrl: backend, wsUrl: 'ws://127.0.0.1:3000/ws' };
+    }
+  }
+
+  async regenerateSecret(
+    deviceId: string,
+    userId: string,
+    apiTokenDeviceScope?: string[],
+  ): Promise<{ secret: string }> {
+    const device = await this.findOne(deviceId, userId, apiTokenDeviceScope);
 
     if (device.mode !== DeviceMode.ACTIVE) {
-      throw new Error('Secret can only be regenerated for ACTIVE mode devices');
+      throw new BadRequestException(
+        'Secret can only be regenerated for ACTIVE mode devices',
+      );
     }
 
     const secret = await this.authService.generateDeviceSecret();

@@ -1,4 +1,10 @@
-import { Injectable, Logger, NotFoundException } from '@nestjs/common';
+import {
+  Injectable,
+  Logger,
+  NotFoundException,
+  BadRequestException,
+  ForbiddenException,
+} from '@nestjs/common';
 import { PrismaService } from '../prisma/prisma.service';
 import { WebSocketGateway } from '../websocket/websocket.gateway';
 import { DeviceMode, LogType } from '../types/enums';
@@ -13,7 +19,17 @@ export class WolService {
     private wsGateway: WebSocketGateway,
   ) {}
 
-  async wakeDevice(deviceId: string, userId: string): Promise<boolean> {
+  async wakeDevice(
+    deviceId: string,
+    userId: string,
+    apiTokenDeviceScope?: string[],
+  ): Promise<boolean> {
+    if (apiTokenDeviceScope?.length && !apiTokenDeviceScope.includes(deviceId)) {
+      throw new ForbiddenException(
+        'This API token is not allowed to access this device',
+      );
+    }
+
     const device = await this.prisma.device.findFirst({
       where: { id: deviceId, userId },
     });
@@ -23,7 +39,6 @@ export class WolService {
     }
 
     try {
-      // Send magic packet
       await new Promise<void>((resolve, reject) => {
         wol.wake(device.macAddress, (error) => {
           if (error) {
@@ -36,7 +51,6 @@ export class WolService {
 
       this.logger.log(`Magic packet sent to ${device.name} (${device.macAddress})`);
 
-      // Log the action
       await this.prisma.log.create({
         data: {
           type: LogType.WAKE_SENT,
@@ -49,7 +63,7 @@ export class WolService {
       return true;
     } catch (error) {
       this.logger.error(`Failed to send magic packet: ${error.message}`);
-      
+
       await this.prisma.log.create({
         data: {
           type: LogType.ERROR,
@@ -63,7 +77,17 @@ export class WolService {
     }
   }
 
-  async shutdownDevice(deviceId: string, userId: string): Promise<boolean> {
+  async shutdownDevice(
+    deviceId: string,
+    userId: string,
+    apiTokenDeviceScope?: string[],
+  ): Promise<boolean> {
+    if (apiTokenDeviceScope?.length && !apiTokenDeviceScope.includes(deviceId)) {
+      throw new ForbiddenException(
+        'This API token is not allowed to access this device',
+      );
+    }
+
     const device = await this.prisma.device.findFirst({
       where: { id: deviceId, userId },
     });
@@ -73,7 +97,9 @@ export class WolService {
     }
 
     if (device.mode !== DeviceMode.ACTIVE) {
-      throw new Error('Shutdown is only available for ACTIVE mode devices');
+      throw new BadRequestException(
+        'Shutdown is only available for ACTIVE mode devices',
+      );
     }
 
     const success = await this.wsGateway.sendShutdownCommand(deviceId);

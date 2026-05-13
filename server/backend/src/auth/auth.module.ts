@@ -7,6 +7,8 @@ import { AuthService } from './auth.service';
 import { AuthController } from './auth.controller';
 import { JwtStrategy } from './strategies/jwt.strategy';
 import { AuthentikStrategy } from './strategies/authentik.strategy';
+import { JwtAuthGuard } from './guards/jwt-auth.guard';
+import { JwtOrApiTokenGuard } from './guards/jwt-or-api-token.guard';
 import { PrismaModule } from '../prisma/prisma.module';
 import { ApiTokensModule } from '../api-tokens/api-tokens.module';
 
@@ -21,17 +23,31 @@ import { ApiTokensModule } from '../api-tokens/api-tokens.module';
     ApiTokensModule,
     JwtModule.registerAsync({
       imports: [ConfigModule],
-      useFactory: async (configService: ConfigService) => ({
-        secret: configService.get<string>('JWT_SECRET') || 'your-secret-key',
-        signOptions: {
-          expiresIn: configService.get<string>('JWT_EXPIRES_IN') || '7d',
-        },
-      }),
+      useFactory: async (configService: ConfigService) => {
+        const secret = configService.get<string>('JWT_SECRET')?.trim();
+        if (!secret) {
+          throw new Error(
+            'JWT_SECRET is not set. Add it to server/.env or server/backend/.env.',
+          );
+        }
+        return {
+          secret,
+          signOptions: {
+            expiresIn: configService.get<string>('JWT_EXPIRES_IN') || '7d',
+          },
+        };
+      },
       inject: [ConfigService],
     }),
   ],
   controllers: [AuthController],
-  providers: [AuthService, JwtStrategy, AuthentikStrategy],
-  exports: [AuthService],
+  providers: [AuthService, JwtStrategy, AuthentikStrategy, JwtAuthGuard, JwtOrApiTokenGuard],
+  exports: [
+    AuthService,
+    JwtAuthGuard,
+    JwtOrApiTokenGuard,
+    JwtModule,
+    ApiTokensModule,
+  ],
 })
 export class AuthModule {}

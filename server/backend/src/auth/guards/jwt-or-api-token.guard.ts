@@ -31,8 +31,13 @@ export class JwtOrApiTokenGuard extends AuthGuard('jwt') {
     // Try API token first (starts with 'wol_')
     if (token.startsWith('wol_')) {
       try {
-        const userId = await this.apiTokensService.validateToken(token);
-        request.user = { id: userId };
+        const auth = await this.apiTokensService.validateToken(token);
+        request.user = {
+          id: auth.userId,
+          ...(auth.apiTokenDeviceScope?.length
+            ? { apiTokenDeviceScope: auth.apiTokenDeviceScope }
+            : {}),
+        };
         return true;
       } catch (error) {
         // If API token fails, fall through to JWT

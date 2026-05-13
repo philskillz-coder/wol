@@ -2,6 +2,7 @@ import {
   Controller,
   Get,
   Post,
+  Patch,
   Delete,
   Param,
   Body,
@@ -10,6 +11,7 @@ import {
 } from '@nestjs/common';
 import { ApiTokensService } from './api-tokens.service';
 import { CreateApiTokenDto } from './dto/create-api-token.dto';
+import { UpdateApiTokenDto } from './dto/update-api-token.dto';
 import { JwtAuthGuard } from '../auth/guards/jwt-auth.guard';
 
 @Controller('api-tokens')
@@ -27,6 +29,16 @@ export class ApiTokensController {
   findAll(@Request() req) {
     const userId = req.user.id;
     return this.apiTokensService.findAll(userId);
+  }
+
+  @Patch(':id')
+  update(
+    @Request() req,
+    @Param('id') id: string,
+    @Body() dto: UpdateApiTokenDto,
+  ) {
+    const userId = req.user.id;
+    return this.apiTokensService.update(id, userId, dto);
   }
 
   @Delete(':id')
