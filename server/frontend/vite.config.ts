@@ -15,23 +15,37 @@ export default defineConfig(({ mode }) => {
     ''
   ).trim();
 
-  const resolvedBackend =
-    backendUrl ||
-    (mode === 'production' ? 'http://127.0.0.1:6010' : '');
-
-  if (!resolvedBackend) {
+  if (!backendUrl) {
     throw new Error(
       `BACKEND_URL is not set. Define it in ${path.join(envDir, '.env')} (see server/.env.example) or export it in the shell.`,
     );
   }
+  let resolvedBackend: string;
+  try {
+    const parsed = new URL(backendUrl);
+    if (!['http:', 'https:'].includes(parsed.protocol)) {
+      throw new Error('unsupported protocol');
+    }
+    resolvedBackend = backendUrl.replace(/\/$/, '');
+  } catch {
+    throw new Error(`BACKEND_URL is invalid: "${backendUrl}". Expected full URL like http://localhost:6010`);
+  }
 
-  const frontendPort = parseInt(
+  const frontendPortRaw = (
     process.env.FRONTEND_PORT ||
-      process.env.PORT ||
-      fileEnv.FRONTEND_PORT ||
-      '5173',
-    10,
-  );
+    process.env.PORT ||
+    fileEnv.FRONTEND_PORT ||
+    ''
+  ).trim();
+  if (!frontendPortRaw) {
+    throw new Error(
+      `FRONTEND_PORT is not set. Define it in ${path.join(envDir, '.env')} (see server/.env.example) or export it in the shell.`,
+    );
+  }
+  const frontendPort = Number.parseInt(frontendPortRaw, 10);
+  if (!Number.isInteger(frontendPort) || frontendPort < 1 || frontendPort > 65535) {
+    throw new Error(`FRONTEND_PORT is invalid: "${frontendPortRaw}". Expected integer between 1 and 65535.`);
+  }
 
   const proxy = {
     '/api': {
