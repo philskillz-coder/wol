@@ -7,8 +7,6 @@ interface Device {
   ipAddress?: string;
   mode: string;
   status: string;
-  passiveStatus?: string;
-  activeStatus?: string;
   lastSeen?: string;
 }
 
@@ -72,14 +70,13 @@ export default function DeviceCard({
 
   const isActive = device.mode === 'ACTIVE';
   const busy = loading !== null;
-  const passiveStatus = device.passiveStatus ?? (device.mode === 'PASSIVE' ? device.status : 'UNKNOWN');
-  const activeStatus = device.activeStatus ?? (device.mode === 'ACTIVE' ? device.status : 'UNKNOWN');
 
   return (
     <div className="bg-white shadow rounded-lg p-6">
       <div className="flex justify-between items-start mb-4">
         <div className="flex-1 min-w-0">
-          <h3 className="text-lg font-medium mb-2 truncate">{device.name}</h3>
+          <h3 className="text-lg font-medium truncate">{device.name}</h3>
+          <p className="text-xs text-gray-500 mb-2 truncate">ID: #{device.id}</p>
           <div className="space-y-1 text-sm text-gray-600">
             <p>
               <span className="font-medium">MAC:</span> {device.macAddress}
@@ -95,23 +92,13 @@ export default function DeviceCard({
             </p>
             <div className="space-y-1">
               <p>
-                <span className="font-medium">Passive:</span>{' '}
+                <span className="font-medium">Status:</span>{' '}
                 <span
                   className={`px-2 py-1 rounded text-xs font-semibold ${getStatusColor(
-                    passiveStatus,
+                    device.status,
                   )}`}
                 >
-                  {passiveStatus.toLowerCase()}
-                </span>
-              </p>
-              <p>
-                <span className="font-medium">Active:</span>{' '}
-                <span
-                  className={`px-2 py-1 rounded text-xs font-semibold ${getStatusColor(
-                    activeStatus,
-                  )}`}
-                >
-                  {activeStatus.toLowerCase()}
+                  {device.status.toLowerCase()}
                 </span>
               </p>
             </div>
