@@ -3,24 +3,26 @@ services:
     build: ./backend
     container_name: wol-backend
     restart: unless-stopped
-    network_mode: host
     cap_add:
       - NET_RAW
       - NET_ADMIN
     env_file:
       - .env
+    ports:
+      - "${BACKEND_PORT:?BACKEND_PORT is required}:${BACKEND_PORT:?BACKEND_PORT is required}"
 
   wol-frontend:
     build:
       context: ./frontend
       dockerfile: Dockerfile
       args:
-        BACKEND_URL: ${BACKEND_URL:-http://127.0.0.1:6010}
-        FRONTEND_PORT: ${FRONTEND_PORT:-6020}
+        BACKEND_URL: ${BACKEND_URL:?BACKEND_URL is required}
+        FRONTEND_PORT: ${FRONTEND_PORT:?FRONTEND_PORT is required}
     container_name: wol-frontend
     restart: unless-stopped
-    network_mode: host
     env_file:
       - .env
+    ports:
+      - "${FRONTEND_PORT:?FRONTEND_PORT is required}:${FRONTEND_PORT:?FRONTEND_PORT is required}"
     depends_on:
       - wol-backend

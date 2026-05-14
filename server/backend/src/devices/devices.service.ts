@@ -221,22 +221,45 @@ export class DevicesService {
 
   private getDeviceClientUrls(): { serverUrl: string; wsUrl: string } {
     const explicitServer = this.config.get<string>('SERVER_URL')?.trim();
-    const backend = (
+    const backendRaw = (
       explicitServer ||
       this.config.get<string>('BACKEND_URL')?.trim() ||
-      'http://localhost:3000'
-    ).replace(/\/$/, '');
+      ''
+    ).trim();
+    if (!backendRaw) {
+      throw new Error(
+        'SERVER_URL or BACKEND_URL must be set to generate active-device config.',
+      );
+    }
+    let backend: string;
+    let backendUrl: URL;
+    try {
+      backend = backendRaw.replace(/\/$/, '');
+      backendUrl = new URL(backend);
+      if (!['http:', 'https:'].includes(backendUrl.protocol)) {
+        throw new Error('unsupported protocol');
+      }
+    } catch {
+      throw new Error(
+        `Invalid SERVER_URL/BACKEND_URL "${backendRaw}". Expected full URL like http://localhost:6010.`,
+      );
+    }
     const explicitWs = this.config.get<string>('WS_URL')?.trim();
     if (explicitWs) {
+      try {
+        const wsUrl = new URL(explicitWs);
+        if (!['ws:', 'wss:'].includes(wsUrl.protocol)) {
+          throw new Error('unsupported protocol');
+        }
+      } catch {
+        throw new Error(
+          `Invalid WS_URL "${explicitWs}". Expected full URL like ws://localhost:6010/ws.`,
+        );
+      }
       return { serverUrl: backend, wsUrl: explicitWs };
     }
-    try {
-      const u = new URL(backend);
-      u.protocol = u.protocol === 'https:' ? 'wss:' : 'ws:';
-      return { serverUrl: backend, wsUrl: `${u.origin}/ws` };
-    } catch {
-      return { serverUrl: backend, wsUrl: 'ws://127.0.0.1:3000/ws' };
-    }
+    backendUrl.protocol = backendUrl.protocol === 'https:' ? 'wss:' : 'ws:';
+    return { serverUrl: backend, wsUrl: `${backendUrl.origin}/ws` };
   }
 
   async regenerateSecret(

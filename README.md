@@ -80,15 +80,18 @@ wol/
 ### 1. Abhängigkeiten installieren
 
 ```bash
+cd server
 npm install
+npm --prefix backend install
+npm --prefix frontend install
 ```
 
 ### 2. Backend konfigurieren
 
 ```bash
-cd server/backend
+cd server
 cp .env.example .env
-# .env anpassen: Authentik-URLs, Client-ID/Secret, JWT_SECRET, DATABASE_URL
+# .env anpassen: Ports/URLs + Authentik + Secrets
 ```
 
 ### 3. Datenbank
@@ -101,20 +104,23 @@ npm run prisma:migrate
 ### 4. Backend starten
 
 ```bash
+cd server
 npm run dev:backend
-# API: http://localhost:3000
+# API: BACKEND_URL aus server/.env
 ```
 
 ### 5. Frontend starten
 
 ```bash
+cd server
 npm run dev:frontend
-# UI: http://localhost:5173
+# UI: FRONTEND_URL aus server/.env
 ```
 
 ### 6. Optional: Alles gemeinsam
 
 ```bash
+cd server
 npm run dev
 # Backend + Frontend parallel
 ```
@@ -143,15 +149,15 @@ Das Projekt enthält eine **fertige Docker-Konfiguration** für Backend und Fron
 
 ```bash
 cd server
-# .env im Backend muss existieren (z. B. aus .env.example)
+# .env muss existieren (z. B. aus .env.example)
 docker compose up -d
 ```
 
 Umgebungsvariablen:
-- Backend: `env_file: ./backend/.env`, optional `BACKEND_PORT`
-- Frontend: `FRONTEND_PORT` (z. B. 6020)
+- Backend: `BACKEND_PORT`, `BACKEND_URL`, `FRONTEND_URL`
+- Frontend: `FRONTEND_PORT`, `BACKEND_URL`
 
-Beide Services nutzen aktuell `network_mode: "host"` – Ports sind direkt am Host erreichbar (z. B. Backend 3000, Frontend über `FRONTEND_PORT`).
+Beide Services nutzen Port-Mappings aus `server/.env` (`BACKEND_PORT`, `FRONTEND_PORT`).
 
 ### Nur Backend bauen
 
