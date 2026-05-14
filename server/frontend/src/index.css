@@ -1,6 +1,13 @@
-@tailwind base;
-@tailwind components;
-@tailwind utilities;
+@import "tailwindcss";
+
+@layer base {
+  button, 
+  [type='button'], 
+  [type='reset'], 
+  [type='submit'] {
+    cursor: pointer;
+  }
+}
 
 body {
   margin: 0;

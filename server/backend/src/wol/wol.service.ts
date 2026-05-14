@@ -61,7 +61,7 @@ export class WolService {
       });
 
       return true;
-    } catch (error) {
+    } catch (error: any) {
       this.logger.error(`Failed to send magic packet: ${error.message}`);
 
       await this.prisma.log.create({

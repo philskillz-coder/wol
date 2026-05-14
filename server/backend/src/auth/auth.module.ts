@@ -33,7 +33,8 @@ import { ApiTokensModule } from '../api-tokens/api-tokens.module';
         return {
           secret,
           signOptions: {
-            expiresIn: configService.get<string>('JWT_EXPIRES_IN') || '7d',
+            // expiresIn: configService.get<string>('JWT_EXPIRES_IN') || '7d',
+            expiresIn: (configService.get<string>('JWT_EXPIRES_IN') || '7d') as any,
           },
         };
       },

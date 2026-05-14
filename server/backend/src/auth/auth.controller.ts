@@ -39,7 +39,7 @@ export class AuthController {
 
       // 3. Success Redirect
       return res.redirect(`${this.frontendUrl}?token=${access_token}`);
-    } catch (error) {
+    } catch (error: any) {
       this.logger.error(`Authentik Callback Error: ${error.message}`);
       return this.redirectWithError(res, 'auth_failed', error.message);
     }

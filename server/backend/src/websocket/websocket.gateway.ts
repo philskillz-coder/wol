@@ -130,7 +130,7 @@ export class WebSocketGateway implements OnGatewayConnection, OnGatewayDisconnec
 
       client.emit('authenticated', { deviceId: device.id });
       this.logger.log(`Active client authenticated: ${device.name} (${device.id})`);
-    } catch (error) {
+    } catch (error: any) {
       this.logger.error(`Authentication error: ${error.message}`);
       client.emit('error', { message: 'Authentication failed' });
       client.disconnect();
@@ -201,7 +201,7 @@ export class WebSocketGateway implements OnGatewayConnection, OnGatewayDisconnec
         },
       });
       return true;
-    } catch (error) {
+    } catch (error: any) {
       this.logger.error(`Error updating device status: ${error.message}`);
       return false;
     }

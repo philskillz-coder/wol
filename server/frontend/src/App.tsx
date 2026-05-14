@@ -15,8 +15,6 @@ interface Device {
   ipAddress?: string
   mode: string
   status: string
-  passiveStatus?: string
-  activeStatus?: string
   lastSeen?: string
 }
 
@@ -134,8 +132,6 @@ function App() {
             ? {
                 ...d,
                 status: payload.status,
-                passiveStatus: d.mode === 'PASSIVE' ? payload.status : 'UNKNOWN',
-                activeStatus: d.mode === 'ACTIVE' ? payload.status : 'UNKNOWN',
               }
             : d
         )
@@ -435,7 +431,7 @@ function App() {
         )}
 
         {/* API Tokens Section */}
-        <div className="bg-white rounded-xl shadow-sm p-6 border">
+        <div className="bg-white rounded-xl shadow-sm p-6">
           <div className="flex justify-between items-center mb-6">
             <h2 className="text-xl font-bold text-gray-800">API Schnittstellen</h2>
             <button

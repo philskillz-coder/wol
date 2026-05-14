@@ -9,7 +9,9 @@
     "target": "ES2021",
     "sourceMap": true,
     "outDir": "./dist",
+    "rootDir": "./src", // Hinzugefügt: Legt src als Basis fest
     "baseUrl": "./",
+    "ignoreDeprecations": "6.0", // Hinzugefügt: Unterdrückt die Warnung für TS 5.x+
     "incremental": true,
     "skipLibCheck": true,
     "strictNullChecks": false,
@@ -20,5 +22,7 @@
     "paths": {
       "@/*": ["src/*"]
     }
-  }
+  },
+  "include": ["src/**/*"], // Empfohlen: Grenzt die Kompilierung auf src ein
+  "exclude": ["node_modules", "dist"]
 }

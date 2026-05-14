@@ -69,7 +69,7 @@ export class AuthService {
         name: profile.name || profile.preferred_username || profile.nickname,
         provider: 'authentik',
       };
-    } catch (error) {
+    } catch (error: any) {
       this.logger.error(`Fehler bei Authentik Kommunikation: ${error.response?.data ? JSON.stringify(error.response.data) : error.message}`);
       throw new Error('Authentik exchange failed');
     }

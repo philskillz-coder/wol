@@ -79,7 +79,7 @@ export class StatusService {
             data: { lastSeen: new Date() },
           });
         }
-      } catch (error) {
+      } catch (error: any) {
         this.logger.error(`Error pinging device ${device.name}: ${error.message}`);
       }
     }
