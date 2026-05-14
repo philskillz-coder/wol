@@ -52,7 +52,7 @@ async function bootstrap() {
     : backendParsed.protocol === 'https:'
       ? 443
       : 80;
-  if (backendUrlPort !== port) {
+  if (config.get('NODE_ENV') !== 'production' && backendUrlPort !== port) {
     throw new Error(
       `BACKEND_URL port (${backendUrlPort}) does not match BACKEND_PORT (${port}).`,
     );
@@ -69,7 +69,7 @@ async function bootstrap() {
       : frontendParsed.protocol === 'https:'
         ? 443
         : 80;
-    if (frontendUrlPort !== frontendPort) {
+    if (config.get('NODE_ENV') !== 'production' && frontendUrlPort !== frontendPort) {
       throw new Error(
         `FRONTEND_URL port (${frontendUrlPort}) does not match FRONTEND_PORT (${frontendPort}).`,
       );

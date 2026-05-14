@@ -5,8 +5,8 @@ import DeviceCard from './components/DeviceCard'
 import DeviceForm from './components/DeviceForm'
 
 // Diese Pfade werden durch deinen Reverse Proxy oder das Host-Networking aufgelöst
-const API_URL = '/api'
-const WS_NAMESPACE = '/ws'
+const API_URL = import.meta.env.VITE_API_URL;         // "/api"
+const WS_NAMESPACE = import.meta.env.VITE_WS_NAMESPACE; // "/ws"
 
 interface Device {
   id: string
@@ -218,13 +218,13 @@ function App() {
       const response = await axios.get(`${API_URL}/devices/${deviceId}/config`, {
         headers: { Authorization: `Bearer ${token}` },
       })
-      const { deviceId: id, secret, serverUrl, wsUrl } = response.data
+      
+      const { deviceId: id, secret, serverUrl } = response.data
       const envContent = [
         '# Wake-on-LAN Active Client Config',
         `DEVICE_ID=${id}`,
         `SECRET=${secret}`,
         `SERVER_URL=${serverUrl}`,
-        ...(wsUrl ? [`WS_URL=${wsUrl}`] : []),
         'ALLOW_SHUTDOWN=false',
       ].join('\n')
 

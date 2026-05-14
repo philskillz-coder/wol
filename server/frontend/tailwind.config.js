@@ -1,6 +1,11 @@
-@import "tailwindcss";
-
-/* Falls du deine alten Content-Pfade explizit angeben willst 
-   (normalerweise erkennt v4 das automatisch): */
-@source "../index.html";
-@source "./**/*.{js,ts,jsx,tsx}";
+/** @type {import('tailwindcss').Config} */
+export default {
+  content: [
+    "./index.html",
+    "./src/**/*.{js,ts,jsx,tsx}",
+  ],
+  theme: {
+    extend: {},
+  },
+  plugins: [],
+}
