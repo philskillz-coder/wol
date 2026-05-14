@@ -2,14 +2,14 @@ services:
   wol-backend:
     build: ./backend
     container_name: wol-backend
+    network_mode: host # Direktzugriff auf das Netzwerk-Interface
     restart: unless-stopped
     cap_add:
       - NET_RAW
       - NET_ADMIN
     env_file:
       - .env
-    ports:
-      - "${BACKEND_PORT:?BACKEND_PORT is required}:${BACKEND_PORT:?BACKEND_PORT is required}"
+    # ports: [...] muss entfernt werden
 
   wol-frontend:
     build:
@@ -19,10 +19,10 @@ services:
         BACKEND_URL: ${BACKEND_URL:?BACKEND_URL is required}
         FRONTEND_PORT: ${FRONTEND_PORT:?FRONTEND_PORT is required}
     container_name: wol-frontend
+    network_mode: host # Auch hier für konsistente Erreichbarkeit
     restart: unless-stopped
     env_file:
       - .env
-    ports:
-      - "${FRONTEND_PORT:?FRONTEND_PORT is required}:${FRONTEND_PORT:?FRONTEND_PORT is required}"
+    # ports: [...] muss entfernt werden
     depends_on:
       - wol-backend
