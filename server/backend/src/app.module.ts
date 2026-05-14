@@ -7,7 +7,6 @@ import { AuthModule } from './auth/auth.module';
 import { DevicesModule } from './devices/devices.module';
 import { WebSocketModule } from './websocket/websocket.module';
 import { StatusModule } from './status/status.module';
-import { LogsModule } from './logs/logs.module';
 import { ApiTokensModule } from './api-tokens/api-tokens.module';
 import { WolModule } from './wol/wol.module';
 
@@ -30,7 +29,6 @@ const envFilePath = [...new Set(envFileCandidates.filter((p) => existsSync(p)))]
     DevicesModule,
     WebSocketModule,
     StatusModule,
-    LogsModule,
     ApiTokensModule,
     WolModule,
   ],
