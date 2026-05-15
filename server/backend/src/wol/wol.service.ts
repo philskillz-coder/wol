@@ -40,7 +40,11 @@ export class WolService {
 
     try {
       await new Promise<void>((resolve, reject) => {
-        wol.wake(device.macAddress, (error) => {
+        const options = device.ipAddress 
+          ? { address: device.ipAddress } 
+          : undefined;
+
+        wol.wake(device.macAddress, options, (error) => {
           if (error) {
             reject(error);
           } else {
