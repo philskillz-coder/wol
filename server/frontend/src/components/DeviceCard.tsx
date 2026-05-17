@@ -69,6 +69,8 @@ export default function DeviceCard({
   };
 
   const isActive = device.mode === 'ACTIVE';
+  const isOnline = device.status === 'ONLINE';
+  const canShutdown = isActive && isOnline;
   const busy = loading !== null;
 
   return (
@@ -112,13 +114,24 @@ export default function DeviceCard({
       </div>
 
       <div className="flex items-center gap-2">
-        <button
-          onClick={() => handleAction(() => onWake(device.id), 'wake')}
-          disabled={busy}
-          className="flex-1 bg-blue-600 text-white px-4 py-2 rounded hover:bg-blue-700 disabled:opacity-50 text-sm font-medium"
-        >
-          {loading === 'wake' ? 'Waking...' : 'Wake'}
-        </button>
+        {/* Primärer Button: Entweder Shutdown oder Wake */}
+        {canShutdown ? (
+          <button
+            onClick={() => handleAction(() => onShutdown(device.id), 'shutdown')}
+            disabled={busy}
+            className="flex-1 bg-red-600 text-white px-4 py-2 rounded hover:bg-red-700 disabled:opacity-50 text-sm font-medium"
+          >
+            {loading === 'shutdown' ? 'Shutting down...' : 'Shutdown'}
+          </button>
+        ) : (
+          <button
+            onClick={() => handleAction(() => onWake(device.id), 'wake')}
+            disabled={busy}
+            className="flex-1 bg-blue-600 text-white px-4 py-2 rounded hover:bg-blue-700 disabled:opacity-50 text-sm font-medium"
+          >
+            {loading === 'wake' ? 'Waking...' : 'Wake'}
+          </button>
+        )}
 
         <div className="relative" ref={menuRef}>
           <button
@@ -140,15 +153,29 @@ export default function DeviceCard({
               className="absolute right-0 top-full mt-1 py-1 w-48 bg-white rounded-md shadow-lg border border-gray-200 z-10"
               role="menu"
             >
+              {/* Wenn Shutdown primär ist, wandert Wake ins Menü */}
+              {canShutdown && (
+                <button
+                  onClick={() => handleAction(() => onWake(device.id), 'wake')}
+                  className="w-full text-left px-4 py-2 text-sm text-gray-700 hover:bg-gray-100"
+                  role="menuitem"
+                >
+                  {loading === 'wake' ? 'Waking...' : 'Wake'}
+                </button>
+              )}
+
               {isActive && (
                 <>
-                  <button
-                    onClick={() => handleAction(() => onShutdown(device.id), 'shutdown')}
-                    className="w-full text-left px-4 py-2 text-sm text-gray-700 hover:bg-gray-100"
-                    role="menuitem"
-                  >
-                    {loading === 'shutdown' ? 'Shutting down...' : 'Shutdown'}
-                  </button>
+                  {/* Shutdown wird hier nur angezeigt, wenn es NICHT bereits der primäre Button ist */}
+                  {!isOnline && (
+                    <button
+                      onClick={() => handleAction(() => onShutdown(device.id), 'shutdown')}
+                      className="w-full text-left px-4 py-2 text-sm text-gray-700 hover:bg-gray-100"
+                      role="menuitem"
+                    >
+                      {loading === 'shutdown' ? 'Shutting down...' : 'Shutdown'}
+                    </button>
+                  )}
                   <button
                     onClick={() => handleAction(() => onDownloadConfig(device.id), 'config')}
                     className="w-full text-left px-4 py-2 text-sm text-gray-700 hover:bg-gray-100"
