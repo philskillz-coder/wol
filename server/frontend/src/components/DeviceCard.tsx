@@ -12,6 +12,7 @@ interface Device {
 
 interface DeviceCardProps {
   device: Device;
+  hiddenMode: boolean;
   onWake: (deviceId: string) => Promise<void>;
   onShutdown: (deviceId: string) => Promise<void>;
   onEdit: (device: Device) => void;
@@ -20,8 +21,23 @@ interface DeviceCardProps {
   onRegenerateSecret: (deviceId: string) => Promise<void>;
 }
 
+function maskValue(value: string, type: 'mac' | 'ip' | 'id'): string {
+  if (!value) return '';
+  switch (type) {
+    case 'mac':
+      return `${value.slice(0, 2)}:XX:XX:XX:XX:XX`;
+    case 'ip':
+      return value.replace(/\.\d+$/, '.XXX');
+    case 'id':
+      return `${value.slice(0, 3)}***`;
+    default:
+      return '••••••';
+  }
+}
+
 export default function DeviceCard({
   device,
+  hiddenMode,
   onWake,
   onShutdown,
   onEdit,
@@ -73,19 +89,25 @@ export default function DeviceCard({
   const canShutdown = isActive && isOnline;
   const busy = loading !== null;
 
+  // Maskierung für Streamer-Modus
+  const displayId = hiddenMode ? maskValue(device.id, 'id') : device.id;
+  const displayMac = hiddenMode ? maskValue(device.macAddress, 'mac') : device.macAddress;
+  const displayIp = hiddenMode && device.ipAddress ? maskValue(device.ipAddress, 'ip') : device.ipAddress;
+  const displayName = hiddenMode ? 'Hidden Device' : device.name;
+
   return (
     <div className="bg-white shadow rounded-lg p-6">
       <div className="flex justify-between items-start mb-4">
         <div className="flex-1 min-w-0">
-          <h3 className="text-lg font-medium truncate">{device.name}</h3>
-          <p className="text-xs text-gray-500 mb-2 truncate">ID: #{device.id}</p>
+          <h3 className="text-lg font-medium truncate">{displayName}</h3>
+          <p className="text-xs text-gray-500 mb-2 truncate">ID: #{displayId}</p>
           <div className="space-y-1 text-sm text-gray-600">
             <p>
-              <span className="font-medium">MAC:</span> {device.macAddress}
+              <span className="font-medium">MAC:</span> {displayMac}
             </p>
             {device.ipAddress && (
               <p>
-                <span className="font-medium">IP:</span> {device.ipAddress}
+                <span className="font-medium">IP:</span> {displayIp}
               </p>
             )}
             <p>
@@ -114,7 +136,7 @@ export default function DeviceCard({
       </div>
 
       <div className="flex items-center gap-2">
-        {/* Primärer Button: Entweder Shutdown oder Wake */}
+        {/* Primärer Button-Wechsel */}
         {canShutdown ? (
           <button
             onClick={() => handleAction(() => onShutdown(device.id), 'shutdown')}
@@ -153,7 +175,7 @@ export default function DeviceCard({
               className="absolute right-0 top-full mt-1 py-1 w-48 bg-white rounded-md shadow-lg border border-gray-200 z-10"
               role="menu"
             >
-              {/* Wenn Shutdown primär ist, wandert Wake ins Menü */}
+              {/* Wake wandert ins Menü, wenn das Gerät online & aktiv ist */}
               {canShutdown && (
                 <button
                   onClick={() => handleAction(() => onWake(device.id), 'wake')}
@@ -166,7 +188,7 @@ export default function DeviceCard({
 
               {isActive && (
                 <>
-                  {/* Shutdown wird hier nur angezeigt, wenn es NICHT bereits der primäre Button ist */}
+                  {/* Shutdown wird hier nur angezeigt, wenn es nicht der Haupt-Button ist */}
                   {!isOnline && (
                     <button
                       onClick={() => handleAction(() => onShutdown(device.id), 'shutdown')}
@@ -207,7 +229,7 @@ export default function DeviceCard({
               </button>
               <button
                 onClick={() => {
-                  if (confirm(`Delete device "${device.name}"?`)) {
+                  if (confirm(`Delete device "${displayName}"?`)) {
                     handleAction(() => onDelete(device.id), 'delete');
                   }
                 }}

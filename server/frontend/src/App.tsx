@@ -50,6 +50,15 @@ function App() {
   const [isAuthenticated, setIsAuthenticated] = useState(false)
   const [user, setUser] = useState<any>(null)
   const [devices, setDevices] = useState<Device[]>([])
+  const [hiddenMode, setHiddenMode] = useState<boolean>(() => {
+    if (typeof window !== 'undefined') {
+      return localStorage.getItem('hidenMode') === 'true';
+    }
+    return false;
+  });
+  useEffect(() => {
+    localStorage.setItem('hiddenMode', String(hiddenMode));
+  }, [hiddenMode]);
   const [loading, setLoading] = useState(true)
   const [showDeviceForm, setShowDeviceForm] = useState(false)
   const [editingDevice, setEditingDevice] = useState<Device | null>(null)
@@ -386,6 +395,26 @@ function App() {
             <div className="flex items-center gap-4">
               <span className="text-sm text-gray-600 hidden sm:inline">{user?.email}</span>
               <button
+                onClick={() => setHiddenMode(!hiddenMode)}
+                className={`flex items-center gap-2 px-4 py-2 rounded-lg text-sm font-semibold shadow-sm transition-all duration-200 border ${
+                  hiddenMode 
+                    ? 'bg-purple-500 text-white border-purple-600 hover:bg-purple-600 ring-2 ring-purple-300' 
+                    : 'bg-white text-gray-700 border-gray-300 hover:bg-gray-50'
+                }`}
+              >
+                {hiddenMode ? (
+                  <>
+                    <span className="w-2 h-2 rounded-full bg-white animate-pulse" />
+                    Versteckter-Modus: AN
+                  </>
+                ) : (
+                  <>
+                    <span className="w-2 h-2 rounded-full bg-gray-400" />
+                    Versteckter-Modus: AUS
+                  </>
+                )}
+              </button>
+              <button
                 onClick={handleLogout}
                 className="text-sm font-medium text-red-600 hover:text-red-800"
               >
@@ -418,6 +447,7 @@ function App() {
             {devices.map((device) => (
               <DeviceCard
                 key={device.id}
+                hiddenMode={hiddenMode}
                 device={device}
                 onWake={handleWake}
                 onShutdown={handleShutdown}
