@@ -126,10 +126,10 @@ function App() {
   useEffect(() => {
     if (!isAuthenticated) return
 
-    // Socket.io nutzt automatisch die aktuelle Domain, wenn nur der Pfad angegeben wird
+    // Socket.io-Pfad muss über /api laufen, damit nginx (Prod) zum Backend proxied
     const socket = io(WS_NAMESPACE, {
-      path: '/socket.io',
-      transports: ['websocket', 'polling'],
+      path: `${API_URL}/socket.io`,
+      transports: ['websocket'],
     })
     
     socketRef.current = socket

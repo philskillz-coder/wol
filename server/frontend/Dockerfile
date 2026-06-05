@@ -15,21 +15,17 @@
     # Vite erstellt hier den /dist Ordner
     RUN npm run build
     
-    # --- STAGE 2: Der Kellner (Serve) ---
+    # --- STAGE 2: Static files + API/WS proxy ---
     FROM node:20-slim AS runner
     WORKDIR /app
-    
-    # Wir installieren NUR serve, um die Dateien stabil auszuliefern
-    RUN npm install -g serve
-    
-    # Wir kopieren NUR den fertigen dist-Ordner vom Koch
+
+    COPY package*.json ./
+    RUN npm install --omit=dev
+
     COPY --from=builder /app/dist ./dist
-    
-    # Port für serve zur Laufzeit
+    COPY server.mjs ./
+
     ARG FRONTEND_PORT
     ENV FRONTEND_PORT=$FRONTEND_PORT
-    
-    # Serve liefert den dist-Ordner aus
-    # -s sorgt dafür, dass React-Routing (SPA) funktioniert
-    # -l legt den Port fest
-    CMD ["sh", "-c", "serve -s dist -l ${FRONTEND_PORT}"]
+
+    CMD ["node", "server.mjs"]
