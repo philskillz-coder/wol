@@ -25,11 +25,11 @@ function maskValue(value: string, type: 'mac' | 'ip' | 'id'): string {
   if (!value) return '';
   switch (type) {
     case 'mac':
-      return `${value.slice(0, 2)}:XX:XX:XX:XX:XX`;
+      return `${value.slice(0, 2+3+3)}:XX:XX:XX`;
     case 'ip':
       return value.replace(/\.\d+$/, '.XXX');
     case 'id':
-      return `${value.slice(0, 3)}***`;
+      return `${value.slice(0, value.length - 5)}***`;
     default:
       return '••••••';
   }
@@ -93,7 +93,7 @@ export default function DeviceCard({
   const displayId = hiddenMode ? maskValue(device.id, 'id') : device.id;
   const displayMac = hiddenMode ? maskValue(device.macAddress, 'mac') : device.macAddress;
   const displayIp = hiddenMode && device.ipAddress ? maskValue(device.ipAddress, 'ip') : device.ipAddress;
-  const displayName = hiddenMode ? 'Hidden Device' : device.name;
+  const displayName = device.name;
 
   return (
     <div className="bg-white shadow rounded-lg p-6">
