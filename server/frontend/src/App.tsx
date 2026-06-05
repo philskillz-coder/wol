@@ -52,7 +52,7 @@ function App() {
   const [devices, setDevices] = useState<Device[]>([])
   const [hiddenMode, setHiddenMode] = useState<boolean>(() => {
     if (typeof window !== 'undefined') {
-      return localStorage.getItem('hidenMode') === 'true';
+      return localStorage.getItem('hiddenMode') === 'true';
     }
     return false;
   });
